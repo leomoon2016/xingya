@@ -14,7 +14,7 @@
 | `samples/` | 示例课程（仅作示例） | **不自动导入**；需要时运维执行 `xingya course:import`，结果为草稿 |
 
 - `xingya seeds:apply` 每次部署都执行（在 `xingya migrate` 与 `roles.sql` 之后），幂等；它从不修改或删除已有行，因此后台对装扮、技能、角色的修改不会被部署覆盖。
-- 与 `db/seeds/` 的区别：`db/seeds/` 是**只用于本地开发与 e2e 的 SQL 示例行**，从不上服务器；`db/migrations/0001_init.sql` 中的少量 INSERT（系统设置、伙伴档位、默认角色与 `child-safety` 技能行）是结构的一部分，随迁移执行。
+- 与 `db/dev-fixtures/` 的区别：`db/dev-fixtures/` 是**只用于本地开发与 e2e 的 SQL 示例行**，从不上服务器；`db/migrations/0001_init.sql` 中的少量 INSERT（系统设置、伙伴档位、默认角色与 `child-safety` 技能行）是结构的一部分，随迁移执行。
 - 全部由 `tools/validate-seeds` 在 CI 中校验；儿童技能另由 `tools/safety-eval` 评测。
 
 **是否上服务器**：是（发布目录中的 `seeds/`；`samples/` 也随包携带但只在手动导入时使用）。

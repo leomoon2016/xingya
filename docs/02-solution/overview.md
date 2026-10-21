@@ -333,7 +333,7 @@ xingya/
 | `packages/shared/`（API 与课程包 Zod、错误码、规则常量） | `packages/contracts`（API Zod、错误码）、`packages/rules`（规则常量与纯函数）、`packages/seed-schema`（原 content-schema：课程文档、模板与题型 Zod、K 规则、内置数据模式）、`packages/ui`（主题与基础组件）、`packages/skill-format`（SKILL.md 格式与校验） |
 | `packages/content-tools/`（validate / build / import / gen-audio / legacy-convert） | `tools/validate-seeds`（原 validate-content，校验 `seeds/`）、`tools/safety-eval`（儿童安全评测）；导入为 `apps/api` 的 `xingya course:import`（示例课程 → 草稿）；构建期音频（gen-audio）与课程包组装（build）**取消**（[ADR 0010](../adr/0010-oss-cdn-publish-time-piper.md)）；旧内容转换（legacy-convert）取消，首发课程在后台制作 |
 | `content/` | `seeds/`（ADR 0015 由 `content/` 改名）：`course-templates/`、`skills/`、`agents/`、`safety/`、`phrases/`、`avatars/`、`shop/`、`samples/english/grade-1/`（仅作示例）；见 [seeds/README.md](../../seeds/README.md)、[课程模型](../03-design/course-model.md)、[Skill 与 AI 角色](../03-design/modules/agents.md) |
-| `db/migrations/`（V001__init.sql） | `db/migrations/0001_init.sql`、`db/roles.sql`、`db/seeds/`、`db/verify/` |
+| `db/migrations/`（V001__init.sql） | `db/migrations/0001_init.sql`、`db/roles.sql`、`db/dev-fixtures/`、`db/verify/` |
 | `deploy/` | `deploy/{nginx,systemd,scripts}` |
 | `e2e/` | `apps/web/e2e/`、`apps/admin/e2e/`；服务端测试在 `apps/api/test/{unit,integration,concurrency,safety}/` |
 | `docs/` | `docs/01-requirements` … `06-releases`、`docs/adr`、`docs/reviews` |
@@ -348,7 +348,7 @@ xingya/
 | `packages/*` | 间接 | 不单独部署，构建时编译进 api、web、admin 的产物 |
 | `seeds/` | 是 | → `releases/<ts-version>/seeds/`。`course-templates`、`safety`、`phrases`、`avatars`：api 启动时读取，不入库；`shop`、`skills`、`agents`：每次部署由 `xingya seeds:apply` 只插入缺失行（不覆盖后台修改）；`samples`：只在运维手动 `xingya course:import` 时导入为草稿 |
 | `tools/*` | 否 | 只在 CI 与本地运行 |
-| `db/seeds`、`db/verify` | 否 | 开发与 e2e 的 SQL 示例行、结构验证（`db/seeds` 与顶层 `seeds/` 不同，见 `db/seeds/README.md`） |
+| `db/dev-fixtures`、`db/verify` | 否 | 开发与 e2e 的 SQL 示例行、结构验证（`db/dev-fixtures` 与顶层 `seeds/` 不同，见 `db/dev-fixtures/README.md`） |
 | `deploy/nginx` | 是 | → `/etc/nginx/` |
 | `deploy/systemd` | 是 | → `/etc/systemd/system/` |
 | `deploy/scripts` | 是 | → `/opt/xingya/scripts/` |

@@ -1,4 +1,4 @@
-# db/seeds —— 本地开发与 e2e 的 SQL 示例行
+# db/dev-fixtures —— 本地开发与 e2e 的 SQL 示例行
 
 本地开发与 e2e 用的示例家庭、孩子与最小课程数据（SQL）。绝不包含真实数据。
 

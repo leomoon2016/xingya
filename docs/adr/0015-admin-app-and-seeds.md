@@ -17,7 +17,7 @@
    - **启动时读取、不入库**：`course-templates`、`safety`（含 `agent-guard.md`，守则不进数据库）、`phrases`、`avatars`。
    - **部署时补齐**：`shop`、`skills`、`agents` 由每次部署在 `xingya migrate` 与 `db/roles.sql` 之后运行的 `xingya seeds:apply` 写入；幂等，只插入缺失行，从不修改或删除，后台修改永不被覆盖。它取代原 `xingya skills:seed` 与 `xingya shop:import`。
    - `samples` 不自动导入，只在运维手动 `xingya course:import` 时导入为草稿。
-6. `db/seeds/` 保持为开发与 e2e 的 SQL 示例行，从不部署；与顶层 `seeds/` 的区别写在两个目录的 README 中。迁移 `0001_init.sql` 中的 INSERT 属于迁移本身。
+6. `db/dev-fixtures/` 保持为开发与 e2e 的 SQL 示例行，从不部署；与顶层 `seeds/` 的区别写在两个目录的 README 中。迁移 `0001_init.sql` 中的 INSERT 属于迁移本身。
 7. 服务端 `apps/api/src/platform/` 分为 `db`、`auth`、`logging`、`config`；studio 模块内部分 `jobs`、`assets`、`skills`、`agents`、`runner`、`tools`、`providers` 子目录（仍是一个模块、一个 `index.ts`）；测试集中在 `apps/api/test/{unit,integration,concurrency,safety}`。
 
 ## 后果
