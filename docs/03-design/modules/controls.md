@@ -11,7 +11,7 @@
 
 child_controls, course_overrides, usage_days
 
-列与约束见 [数据模型 [§6.1](../data-model.md)](../data-model.md)。
+列与约束见 [数据模型 §6.1](../data-model.md)。
 
 ## 边界
 
@@ -37,7 +37,7 @@ usageForDay(familyId, childId, date): {seconds}
 
 ## 端点
 
-见 [API 概要 [§5.3](../api.md)](../api.md) 中“controls”一组。
+见 [API 概要 §5.3](../api.md) 中“controls”一组。
 
 ## 需求
 

@@ -5,11 +5,11 @@ build/
 coverage/
 *.tsbuildinfo
 
-# 课程包构建输出（Piper 生成的音频、压缩图片、组装好的课程包）
-content/dist/
-tools/build-audio/cache/
-tools/build-audio/out/
+# 本地生成的音频与临时文件（服务器上 Piper 输出在 /var/lib/xingya/tmp，不进仓库）
 *.wav
+tmp/
+# 本地 OSS 模拟目录（集成测试与 e2e）
+.oss-local/
 
 # 测试产物
 apps/web/test-results/

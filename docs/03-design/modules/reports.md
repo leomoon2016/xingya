@@ -11,7 +11,7 @@
 
 daily_reports, email_outbox
 
-列与约束见 [数据模型 [§6.1](../data-model.md)](../data-model.md)。
+列与约束见 [数据模型 §6.1](../data-model.md)。
 
 ## 边界
 
@@ -27,6 +27,7 @@ daily_reports, email_outbox
 ```ts
 getDailyReports(p, childId, from, to) / getTodayLive(p, childId) / getWeekly(p, childId, isoWeek)
 runNightlyAggregation(now)                             // 每 15 分钟调度，按家庭时区处理“昨天”
+                                                       // 读取 learning/stars/discovery/chat/controls 的 statsForDay（含碎片收入、找到的呀哈哈）
 enqueueWeeklyReports(now)                              // 每 5 分钟调度，周日 20:00 后入队
 enqueueEmail(tx | db, {kind, dedupeKey, to, subject, html, text, familyId?, parentId?})
 sendDueEmails(now)                                     // 每 30 秒
@@ -35,7 +36,7 @@ unsubscribe(signedToken)
 
 ## 端点
 
-见 [API 概要 [§5.3](../api.md)](../api.md) 中“reports”一组。
+见 [API 概要 §5.3](../api.md) 中“reports”一组。
 
 ## 需求
 

@@ -1,3 +1,3 @@
-# english —— 英语课程
+# english —— 英语示例课程
 
-`grade-1/` … `grade-6/` 按年级存放课程目录（`<courseId>/course.json` 与 `levels/`）；词条放 `words/`（放入内容时创建）。
+`grade-1/` 存放少量示例课程（课程文档 JSON，结构见 `docs/03-design/course-model.md` §7.3），用于开发、测试与首发的种子内容；正式课程在后台制作与发布。

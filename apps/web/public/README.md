@@ -1,5 +1,3 @@
-# public —— 原样复制的静态文件
+# public
 
-PWA 图标、manifest、favicon 等。课程图片与音频不放这里（来自课程包）。
-
-**是否上服务器**：是，随前端构建产物部署。
+PWA 图标、manifest、favicon 等。课程图片、音频与动画不放这里（来自素材库，经 CDN 提供）。

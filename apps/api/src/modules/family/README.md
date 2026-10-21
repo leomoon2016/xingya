@@ -1,6 +1,6 @@
 # family —— 家庭账号
 
-**职责**：家庭（租户根）、家长与孩子账号、家庭设备与头像墙、PIN/密码登录、会话、邀请与找回密码、系统管理员账号、审计。
+**职责**：家庭、家长、孩子、系统管理员、家庭设备、会话与令牌、登录与锁定、审计。
 
 **拥有的表**：families, parents, children, admin_accounts, family_devices, sessions, auth_tokens, audit_events。
 

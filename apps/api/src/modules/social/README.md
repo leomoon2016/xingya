@@ -1,6 +1,6 @@
 # social —— 社交
 
-**职责**：周排行榜、赠送星星、消息、好友家庭、举报与屏蔽。
+**职责**：排行榜、赠送、家庭内与跨家庭消息、好友家庭、举报与屏蔽。
 
 **拥有的表**：family_friendships, gifts, messages, blocks, abuse_reports。
 

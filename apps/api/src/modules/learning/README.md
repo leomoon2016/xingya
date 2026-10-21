@@ -1,8 +1,8 @@
 # learning —— 学习
 
-**职责**：关卡路线与解锁、整批提交闯关与判分、最佳成绩、间隔复习、连续学习天数。
+**职责**：关卡路线与解锁、作答（只下发可见部分、逐题反馈、完成结算）、最佳成绩、间隔复习（义项与错题）、连续学习天数。
 
-**拥有的表**：level_progress, attempts, review_items, review_sessions。
+**拥有的表**：plays, level_progress, attempts, review_items, review_sessions。
 
 **规则**：其他模块只能通过本目录的 `index.ts` 调用本模块；`repo.ts` 只访问上面列出的表。
 

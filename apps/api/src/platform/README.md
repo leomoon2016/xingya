@@ -10,5 +10,6 @@
 - **logging**：pino JSON 日志与脱敏规则。
 - **scheduled jobs**：进程内调度器（`GET_LOCK` 防重叠），任务本身由各模块提供。
 - **Clock**：可注入的时间源（测试可控）。
+- **oss**：阿里云 OSS 客户端（私有前缀签名 URL、公开前缀 `pub/` 复制、按内容哈希命名）。
 
 拥有的表：system_settings、idempotency_requests、schema_migrations。

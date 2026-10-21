@@ -11,7 +11,7 @@
 
 family_friendships, gifts, messages, blocks, abuse_reports
 
-列与约束见 [数据模型 [§6.1](../data-model.md)](../data-model.md)。
+列与约束见 [数据模型 §6.1](../data-model.md)。
 
 ## 边界
 
@@ -37,7 +37,7 @@ adminListReports(status) / adminResolveReport(admin, id, action, note)
 
 ## 端点
 
-见 [API 概要 [§5.3](../api.md)](../api.md) 中“social”一组。
+见 [API 概要 §5.3](../api.md) 中“social”一组。
 
 ## 需求
 

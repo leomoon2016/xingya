@@ -1,6 +1,7 @@
 # API 概要
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../README.md)）。
+> 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）：作答改为 plays；新增 companion、discovery、admin/studio 端点与相应错误码；去掉课程包接口。
 
 
 ## 5. API 概要
@@ -35,12 +36,17 @@
 | 403 | `COURSE_NOT_OPEN` / `LEVEL_LOCKED` | 课程未开放 / 关卡未解锁 |
 | 403 | `TIME_LIMIT_REACHED` / `OUTSIDE_ALLOWED_HOURS` | 时长用完 / 不在允许时段（`details.availableAt`） |
 | 403 | `CROSS_FAMILY_DISABLED` / `NOT_FRIENDS` / `BLOCKED` | 跨家庭互动前提不满足 |
-| 403 | `CHAT_DISABLED_FOR_CHILD` | 家长关闭了该孩子的呀哈哈 |
+| 403 | `CHAT_DISABLED_FOR_CHILD` | 家长关闭了该孩子的呀哈哈队长 |
 | 403 | `REGISTRATION_CLOSED` | 注册未开放或注册码无效 |
 | 404 | `NOT_FOUND` | 不存在或不属于本家庭 |
 | 409 | `VERSION_CONFLICT` | 乐观锁冲突（`details.current` 为最新数据） |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | 同一请求 ID 不同请求体 |
-| 409 | `CONTENT_STALE` | 提交的题目集合与当前课程包不一致 |
+| 409 | `PLAY_EXPIRED` / `PLAY_INCOMPLETE` / `PLAY_FINISHED` | 作答已过期 / 还有题未作答 / 作答已完成（对 answers 而言） |
+| 409 | `INSUFFICIENT_FRAGMENTS` / `THRESHOLD_NOT_MET` / `DEN_FULL` / `DEN_MAX` | 碎片不足 / 未达领养门槛 / 营地已满 / 已达最大扩建次数 |
+| 409 | `DRAFT_CHECK_FAILED` / `DRAFT_NOT_IN_REVIEW` / `DRAFT_OPEN_EXISTS` | 自动检查未通过 / 草稿不在审核中 / 该课程已有未完成草稿 |
+| 409 | `AI_BUDGET_EXCEEDED` | 本月 AI 预算不足（`details.remainingFen`、`details.estimateFen`） |
+| 409 | `RULE_INVALID` | 投放规则不合法（`details.errors[]`）；数据库 CHECK 兜底 |
+| 400 | `PROMPT_BLOCKED` | 描述命中提示词禁止词表（`details.terms`） |
 | 409 | `INSUFFICIENT_STARS` / `PRICE_CHANGED` / `ALREADY_OWNED` | 星星不足 / 价格已变（`details.currentPrice`）/ 已拥有 |
 | 409 | `ALREADY_DECIDED` / `PENDING_LIMIT` | 审批已处理 / 待审批已达 3 个 |
 | 409 | `GIFT_DAILY_LIMIT` / `MESSAGE_DAILY_LIMIT` | 当日赠送 20 颗 / 消息 50 条已满 |
@@ -81,14 +87,14 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 
 | 方法 路径 | 主体 | 说明 |
 | --- | --- | --- |
-| GET /pack | 公开 | 当前课程包版本与静态资源前缀（Service Worker 用） |
+| GET /assets/config | 公开 | 素材 CDN 前缀（Service Worker 用） |
 | GET /courses | K | 已开放课程及进度摘要 |
-| GET /courses/:courseId/map | K | 关卡路线图（锁定/可玩/已通过/星数） |
-| GET /levels/:levelId | K | 关卡题目（含答案，供即时反馈）与资源 URL |
-| POST /attempts | K | 整批提交闯关 |
+| GET /courses/:courseId/map | K | 关卡路线图（锁定/可玩/已通过/星数，按当前版本；含“今天还能找 N 个”） |
+| POST /levels/:levelId/plays | K | 开始闯关作答：只返回题目可见部分（选项已打乱、选项与词块 ID 已换成本次作答的随机令牌）与素材 CDN 地址，不含答案 |
+| POST /plays/:playId/answers | K | 提交一题 `{questionId, response}` → `{correct, correctOptionId/answer, explanation}`；每题只记第一次 |
+| POST /plays/:playId/finish | K | 完成：结算星星、碎片、伙伴经验、复习入队，返回 3 个藏匿点（只有编号与位置）；幂等 |
 | GET /review/summary | K | 今日到期、已复习、剩余额度、是否完成 |
-| GET /review/batch | K | 本次复习题（≤ 剩余额度） |
-| POST /review/sessions | K | 整批提交复习 |
+| POST /review/plays | K | 开始复习作答（≤ 剩余额度）；作答与完成用上面两个 `/plays/:playId/*` 端点 |
 | GET /me/streak | K | 连续天数 |
 | GET /children/:id/progress | P | 孩子各课程进度 |
 
@@ -96,17 +102,37 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 
 | 方法 路径 | 主体 | 说明 |
 | --- | --- | --- |
-| GET /stars | K | 可用、冻结、最近流水 |
+| GET /stars | K | 星星可用与冻结、碎片余额、最近流水 |
 | GET /children/:id/ledger | P | 孩子流水（分页） |
 | POST /children/:id/awards | P | 手动奖励 1–50 |
 | GET /shop | K | 物品与是否拥有 |
 | POST /shop/purchases | K | 购买（`expectedPrice`） |
-| GET /me/items · PUT /me/equipment | K | 我的物品 / 穿戴与陪伴宠物 |
+| GET /me/items · PUT /me/equipment | K | 我的装扮 / 穿戴 |
 | GET /rewards | K | 本家庭可兑换的现实奖励 |
 | GET · POST /family/reward-options · PATCH /family/reward-options/:id | P | 奖励清单（乐观锁） |
 | POST /redemptions · POST /redemptions/:id/cancel | K | 申请 / 撤回 |
 | GET /redemptions?childId=&status= | P | 兑换记录 |
 | POST /redemptions/:id/decision | P | 批准或拒绝（`version`） |
+
+**companion**
+
+| 方法 路径 | 主体 | 说明 |
+| --- | --- | --- |
+| GET /companion/species | K | 可领养的伙伴（档位、两种价格、是否达门槛、是否已拥有） |
+| GET /companion/den | K | 我的营地：格数、下一次扩建价格、已领养伙伴（等级、经验、阶段、已解锁动作、素材） |
+| POST /companion/adoptions | K | 领养 `{speciesId, payWith: star\|fragment, expectedPrice}` |
+| POST /companion/den/expansions | K | 扩建营地 `{expectedPrice}` |
+| PUT /companion/active | K | 设为学习陪伴 `{childPetId}` |
+| GET /children/:id/companion | P | 家长查看孩子的伙伴 |
+
+**discovery**
+
+| 方法 路径 | 主体 | 说明 |
+| --- | --- | --- |
+| GET /discovery/today | K | 今天还能找几个、未点开的藏匿点 |
+| POST /discovery/spots/:spotId/reveal | K | 点开藏匿点；重复点开返回第一次的结果 |
+| GET /discovery/album | K | 图鉴：套组、已找到/剪影、次数、累计 |
+| GET /children/:id/album | P | 家长查看孩子的图鉴 |
 
 **social**
 
@@ -137,7 +163,7 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | --- | --- | --- |
 | POST /heartbeat | K | 30 秒心跳，返回时间状态 |
 | GET /me/time-status | K | 剩余时间、是否锁定、下次可用时间 |
-| GET · PUT /children/:id/controls | P | 时长、时段、呀哈哈额度、退出排行（乐观锁） |
+| GET · PUT /children/:id/controls | P | 时长、时段、呀哈哈队长额度、退出排行（乐观锁） |
 | GET /children/:id/courses · PUT · DELETE /children/:id/course-overrides/:courseId | P | 课程开放状态与覆盖（乐观锁） |
 | POST /children/:id/time-grants | P | 再玩 15 分钟 |
 | GET /approvals | P | 审批收件箱 |
@@ -151,6 +177,33 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | PUT /me/notifications | P | 周报订阅开关 |
 | GET · POST /unsubscribe?token= | 公开 | 退订确认页 / 一键退订（RFC 8058） |
 
+**admin/studio**（前缀 `/admin/studio`，仅系统管理员 A；所有入队接口先返回预估费用，带 `confirmEstimateFen` 再次提交才入队）
+
+| 方法 路径 | 说明 |
+| --- | --- |
+| GET /admin/studio/jobs · GET /admin/studio/jobs/:id · POST /admin/studio/jobs/:id/cancel | 任务列表、详情、取消排队中任务 |
+| GET · PUT /admin/studio/budget/:month | 本月上限、预留、已花费（乐观锁） |
+| POST /admin/studio/estimate | 预估费用 `{kind, params}` |
+| GET /admin/studio/assets · GET /admin/studio/assets/:id/url | 素材库、10 分钟签名 URL |
+| POST /admin/studio/materials · POST /admin/studio/materials/:id/extract | 申请直传 OSS 的上传地址 / 抽取文本或 OCR |
+| GET · POST /admin/studio/words · POST /admin/studio/senses/:id/retire · PUT /admin/studio/words/:id/audio · PUT /admin/studio/senses/:id/image | 词库 |
+| GET · POST /admin/studio/courses · POST /admin/studio/courses/:id/drafts | 课程列表、建课程、基于当前版本开草稿 |
+| GET · PATCH /admin/studio/drafts/:id | 草稿（表单数据 + 检查结果，乐观锁） |
+| POST /admin/studio/drafts/:id/analyze · /generate · /questions/:key/rewrite | AI 分析资料 / 按模板生成 / 重写一题（入队） |
+| GET /admin/studio/drafts/:id/preview/:levelKey | 学生视角试玩（不记录） |
+| POST /admin/studio/drafts/:id/submit · /return · /publish | 提交审核 / 退回 / 发布（入队 publish_audio） |
+| GET /admin/studio/courses/:id/versions | 版本历史 |
+| GET /admin/studio/templates | 模板列表（只读，来自仓库） |
+| GET · PATCH /admin/studio/pet-tiers · PUT /admin/studio/pet-tiers/:id/stages | 档位与阶段 |
+| GET · POST /admin/studio/pets · POST /admin/studio/pets/:id/candidates · /base · /stage-art · /motions · /voice · /submit · /review · /publish · /unlist | 伙伴设计流程 |
+| GET · POST /admin/studio/yahaha/sets · GET · POST /admin/studio/yahaha/styles · 同上设计流程 · PATCH /admin/studio/yahaha/styles/:id | 款式与套组 |
+| GET · PUT /admin/studio/yahaha/settings | 全局开关、概率、每日上限、稀有度权重、里程碑奖励（乐观锁） |
+| GET /admin/studio/yahaha/stats | 统计 |
+| POST /admin/studio/rules/parse | 一句话 → 规则结构（入队 rule_parse） |
+| POST /admin/studio/rules/validate | 校验 + 大白话复述 + 影响估算 + 重叠列表 |
+| GET · POST /admin/studio/rules · PATCH /admin/studio/rules/:id · POST /admin/studio/rules/:id/publish · /pause · /resume | 规则 CRUD 与生命周期（审计） |
+| GET · POST /admin/studio/shop-items · PATCH /admin/studio/shop-items/:id | 装扮 |
+
 **admin**（前缀 `/admin`）
 
 | 方法 路径 | 主体 | 说明 |
@@ -158,11 +211,11 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | POST /admin/login | 公开 | 用户名 + 密码 + TOTP |
 | GET /admin/reports?status= · GET /admin/reports/:id | A | 举报队列；详情含被举报消息及两人之间前后各 10 条 |
 | POST /admin/reports/:id/resolve | A | `dismiss` / `hide_message` / `disable_cross_family` / `suspend_family` |
-| GET /admin/anomalies | A | 对账不一致、发送失败邮件、进程内 5xx 计数、备份状态 |
-| GET · PUT /admin/settings | A | `ai.enabled`、`ai.model`、`registration.mode`（乐观锁） |
+| GET /admin/anomalies | A | 对账不一致（星星、碎片、款式放置数）、发送失败邮件、进程内 5xx 计数、AI 任务失败、预算 ≥ 80%、备份状态 |
+| GET · PUT /admin/settings | A | 系统设置（`ai.*`、`registration.mode`、`companion.*`、`studio.*`、`learning.play_ttl_minutes`、`content.allow_self_review`；乐观锁；`discovery.*` 在工作室页面） |
 | POST /admin/signup-codes | A | 签发一次性注册码（14 天有效，仅显示一次；可选填邮箱，同时发送注册邀请邮件） |
 | POST /admin/families/:id/suspend · /reactivate | A | 停用/恢复家庭 |
-| GET /health | 公开 | `{ok, version, packVersion}`（不含敏感信息） |
+| GET /health | 公开 | `{ok, version}`（不含敏感信息） |
 
 ### 5.4 权限矩阵
 ✓ = 允许；本 = 仅限本家庭/本人；— = 不允许。
@@ -173,11 +226,11 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | 邀请/停用家长 | 本 ✓ | — | — |
 | 添加/修改/归档孩子、设 PIN 与密码、解锁 | 本 ✓ | — | — |
 | 标记/撤销家庭设备、查看设备与远程下线 | 本 ✓ | — | — |
-| 闯关、复习、购买、穿戴、申请兑换、赠送 | — | 本人 ✓ | — |
-| 查看孩子进度、流水、报告 | 本 ✓ | 本人（自己的进度与流水） | — |
+| 闯关、复习、点开藏匿点、领养伙伴、扩建营地、购买、穿戴、申请兑换、赠送 | — | 本人 ✓ | — |
+| 查看孩子进度、流水、报告、伙伴、图鉴 | 本 ✓ | 本人（自己的进度、流水、伙伴、图鉴） | — |
 | 手动奖励星星 | 本 ✓ | — | — |
 | 维护奖励清单、审批兑换 | 本 ✓ | — | — |
-| 设置时长/时段/呀哈哈额度/课程开放/退出排行、加时 | 本 ✓ | — | — |
+| 设置时长/时段/呀哈哈队长额度/课程开放/退出排行、加时 | 本 ✓ | — | — |
 | 查看排行榜 | 本 ✓ | ✓（未退出排行且符合范围） | — |
 | 家庭内发消息 | 本 ✓ | 本 ✓ | — |
 | 跨家庭发预设短语/表情 | — | ✓（满足前提） | — |
@@ -185,8 +238,10 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | 举报消息 | 本 ✓ | 本人收到的 ✓ | — |
 | 屏蔽 / 解除屏蔽 | ✓ / ✓ | ✓ / — | — |
 | 发起/审批/解除好友家庭 | 本 ✓ | — | — |
-| 使用呀哈哈 | ✓（100 条/天） | ✓（家长设定额度） | — |
+| 使用呀哈哈队长 | ✓（100 条/天） | ✓（家长设定额度） | — |
 | 处理举报、停用家庭 | — | — | ✓ |
-| 系统设置（AI 开关、模型、注册模式）、签发注册码 | — | — | ✓ |
+| 系统设置（AI 开关、模型、注册模式、伙伴/发现/工作室参数）、签发注册码 | — | — | ✓ |
+| AI 工作室：词库、课程草稿/审核/发布、伙伴与款式设计、投放规则、预算、素材 | — | — | ✓（TOTP） |
+| 读取题目答案与解析 | — | 只在作答后由服务端返回该题的 | ✓（工作室） |
 | 查看异常与对账 | — | — | ✓ |
 | 访问数据库 | — | — | —（只有运维经 SSH 隧道用 migrator 账号） |

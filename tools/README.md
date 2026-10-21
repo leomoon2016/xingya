@@ -1,8 +1,9 @@
-# tools —— 内容工具（只在 CI 与本地运行）
+# tools —— 仓库工具（只在 CI 与本地运行）
 
 | 目录 | 作用 |
 | --- | --- |
-| `validate-content/` | 课程包 Zod 结构校验 + 规则 C1–C13，校验通过后组装课程包（图片压缩、哈希命名、manifest、ids.lock） |
-| `build-audio/` | 用 Piper 离线合成标准音（按内容哈希缓存，ffmpeg 编码 MP3），支持真人录音覆盖 |
+| `validate-content/` | 校验 `content/` 下的模板、示例课程（Zod 结构 + 课程自动检查 K 规则）、装扮初始数据、短语、安全词表与提示词禁止词表 |
 
-**是否上服务器**：否。工具本身不部署；它们生成的课程包与音频会部署（见 `content/README.md`）。
+音频不再在构建期生成：课程发布时由 api 的后台任务以一次性进程运行 Piper（见 `docs/adr/0010-oss-cdn-publish-time-piper.md`）。
+
+**是否上服务器**：否。
