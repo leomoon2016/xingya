@@ -1,0 +1,35 @@
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# 课程包构建输出（Piper 生成的音频、压缩图片、组装好的课程包）
+content/dist/
+tools/build-audio/cache/
+tools/build-audio/out/
+*.wav
+
+# 测试产物
+apps/web/test-results/
+apps/web/playwright-report/
+
+# 环境变量与机密（服务器上放 /etc/xingya/secrets.env，绝不进仓库）
+.env
+.env.*
+!.env.example
+secrets.env
+*.pem
+*.key
+
+# 数据库导出与备份（绝不提交数据）
+*.sql.gz
+*.sqlite
+*.dump
+
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/
+*.log
