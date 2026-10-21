@@ -2,7 +2,7 @@
 
 **What to build:** 家长拿到系统管理员签发的一次性注册码，在主站填写注册码、邮箱、密码、称呼、家庭名和时区（默认 `Asia/Shanghai`），勾选同意《儿童个人信息保护规则》与隐私政策后，系统创建家庭与第一位家长并直接登录；同时发出邮箱验证邮件，家长点链接完成验证（未验证也能使用，但不会收到周报）。之后家长用邮箱 + 密码登录、退出。登录入口在孩子端的登录区域（`child/login`），登录后进入家长中心。
 
-依据：[family 需求 §4.3.1–4.3.2、§4.3.5、验收要点](../../../docs/01-requirements/modules/family.md)、[api §5.3 family](../../../docs/03-design/api.md)、[nfr §8.1–8.2](../../../docs/01-requirements/nfr.md)、[ADR 0007](../../../docs/adr/0007-family-as-tenant.md)。注册码的签发（`POST /admin/signup-codes`）不在本单，测试中用夹具直接写入注册码。
+依据：[family 需求 §4.3.1–4.3.2、§4.3.5、验收要点](../../../docs/01-requirements/modules/family.md)、[api §5.3 family](../../../docs/03-design/api.md)、[nfr §8.1–8.2](../../../docs/01-requirements/nfr.md)、[ADR 0007](../../../docs/adr/0007-family-as-tenant.md)。注册码由系统管理员签发（`POST /admin/signup-codes`），在 [16](16-admin-login.md) 中实现；本单测试用夹具直接写入注册码。
 
 **Blocked by:** [02 平台层和初始迁移](../../m1-skeleton/issues/02-platform-layer.md)、[03 界面主题包](../../m1-skeleton/issues/03-ui-theme.md)、[10 邮件发件箱](10-email-outbox.md)
 

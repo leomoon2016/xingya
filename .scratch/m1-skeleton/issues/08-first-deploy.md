@@ -6,9 +6,11 @@
 
 依据：[deployment §9.2](../../../docs/02-solution/deployment.md)、[overview“服务器目录布局”](../../../docs/02-solution/overview.md)、[deploy/scripts/README](../../../deploy/scripts/README.md)、[roadmap W1–2 与 R1](../../../docs/02-solution/roadmap.md)、[整体评审](../../../docs/reviews/2026-10-21-整体评审.md) §6 建议 5。
 
+**人工步骤说明：** agent 可以编写发布包构建、`deploy.sh`/`rollback.sh`、CI `deploy` 阶段与运维说明，并在一次性环境中验证；对真实 ECS 执行首次部署、经 SSH 端口转发验收、ICP 备案与证书由项目负责人本人完成。
+
 **Blocked by:** [02 平台层和初始迁移](02-platform-layer.md)、[04 种子数据导入](04-seeds-apply.md)、[05 CI 五个阶段](05-ci-pipeline.md)、[06 服务器初始化](06-server-bootstrap.md)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 - [ ] 构建发布包：目录名为“时间戳 + 提交短哈希”（如 `20261021-2056-6b463ed`），含 `api/`（连同 `db/migrations` 与 `db/roles.sql`）、`web/`、`admin/`、`seeds/`；不含测试、设计稿、`db/dev-fixtures`、`db/verify` 与 `tools/`。
 - [ ] `deploy.sh` 按上述顺序执行；任一步失败即停止且不切换 `current`。

@@ -2,11 +2,13 @@
 
 **What to build:** 服务器每天 03:30（UTC+8）自动备份数据库：`mysqldump --single-transaction --routines --triggers xingya | gzip` 写到 `/var/backups/xingya/xingya-YYYYMMDD.sql.gz`，保留 14 份，`gunzip -t` 校验，用 age 公钥加密后上传到 OSS 的 `xingya/db/`，并把最近一次结果写入 `backup-status.json`。每 5 分钟运行一次的告警脚本在磁盘、内存、服务、备份、证书出问题时给运维发邮件。运维有一份恢复手册，并且确实用某次备份恢复成功过。
 
-依据：[deployment §9.3–9.4](../../../docs/02-solution/deployment.md)、[nfr §8.1](../../../docs/01-requirements/nfr.md)“备份”、[roadmap R11](../../../docs/02-solution/roadmap.md)。上传 OSS 需要 07 中的备份子账号；在 07 完成前可先用本地目录验证上传步骤。
+依据：[deployment §9.3–9.4](../../../docs/02-solution/deployment.md)、[nfr §8.1](../../../docs/01-requirements/nfr.md)“备份”、[roadmap R11](../../../docs/02-solution/roadmap.md)。上传 OSS 使用 07 中配置的私有桶与只写 `xingya/db/` 的备份子账号。
 
-**Blocked by:** [06 服务器初始化](06-server-bootstrap.md)
+**人工步骤说明：** agent 可以编写备份、恢复、告警脚本与 timer 单元并在一次性环境中验证；在真实 ECS 上启用、离线保存 age 私钥、配置备份子账号与 SMTP 凭据、执行恢复演练由项目负责人本人完成。
 
-**Status:** ready-for-agent
+**Blocked by:** [06 服务器初始化](06-server-bootstrap.md)、[07 对象存储接入](07-oss-storage.md)
+
+**Status:** ready-for-human
 
 - [ ] `backup.sh` 由 `xingya-backup.timer` 每天 03:30（UTC+8）触发；生成的文件通过 `gunzip -t` 校验；本地只保留 14 份。
 - [ ] 备份用 age **公钥**加密后经 `ossutil` 上传到 `oss://<bucket>/xingya/db/`，使用只写该前缀的子账号；服务器上没有 age 私钥（私钥离线保存）。

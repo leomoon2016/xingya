@@ -15,12 +15,14 @@
 | 03 | [界面主题包](issues/03-ui-theme.md) | 01 | ready-for-agent |
 | 04 | [种子数据导入](issues/04-seeds-apply.md) | 02 | ready-for-agent |
 | 05 | [CI 五个阶段](issues/05-ci-pipeline.md) | 01 | ready-for-agent |
-| 06 | [服务器初始化](issues/06-server-bootstrap.md) | — | ready-for-agent |
-| 07 | [对象存储接入](issues/07-oss-storage.md) | 02 | ready-for-agent |
-| 08 | [首次部署](issues/08-first-deploy.md) | 02, 04, 05, 06 | ready-for-agent |
-| 09 | [备份与告警](issues/09-backup-alerts.md) | 06 | ready-for-agent |
+| 06 | [服务器初始化](issues/06-server-bootstrap.md) | — | ready-for-human |
+| 07 | [对象存储接入](issues/07-oss-storage.md) | 02 | ready-for-human |
+| 08 | [首次部署](issues/08-first-deploy.md) | 02, 04, 05, 06 | ready-for-human |
+| 09 | [备份与告警](issues/09-backup-alerts.md) | 06, 07 | ready-for-human |
 
 ## 当前可开工（frontier）
 
-- **01 仓库骨架打通**、**06 服务器初始化**：没有前置任务，可以立即开始。
-- 01 完成后：02、03、05 解锁；02 完成后：04、07 解锁（以及 W3–4 的 10、16 的一部分前置）；06 完成后：09 解锁；02、04、05、06 都完成后：08 解锁。
+- 06–09 为 `ready-for-human`：agent 可以准备脚本、配置与运维说明，ECS、安全组、证书、OSS/CDN、RAM 子账号与 ICP 备案由项目负责人本人完成。
+
+- **01 仓库骨架打通**（agent）、**06 服务器初始化**（人工，agent 可先写脚本）：没有前置任务，可以立即开始。
+- 01 完成后：02、03、05 解锁；02 完成后：04、07 解锁（以及 W3–4 的 10、16 的一部分前置）；06、07 都完成后：09 解锁；02、04、05、06 都完成后：08 解锁。

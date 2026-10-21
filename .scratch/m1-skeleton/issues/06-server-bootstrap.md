@@ -6,9 +6,11 @@
 
 依据：[deployment §9.1–9.3](../../../docs/02-solution/deployment.md)、[overview“服务器目录布局”](../../../docs/02-solution/overview.md)、[nfr §8.1](../../../docs/01-requirements/nfr.md)、[deploy/nginx/README](../../../deploy/nginx/README.md)、[deploy/systemd/README](../../../deploy/systemd/README.md)、[ADR 0002](../../../docs/adr/0002-mysql-local-only-ssh-tunnel.md)、[ADR 0015](../../../docs/adr/0015-admin-app-and-seeds.md)、开放问题 Q17（声音模型）。
 
+**人工步骤说明：** agent 可以编写并在一次性环境中验证 bootstrap 脚本、Nginx 与 systemd 配置和运维说明；在真实 ECS 上执行、配置安全组、申请证书、ICP 备案由项目负责人本人完成。
+
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 - [ ] `bootstrap.sh` 在一次性的 Ubuntu 24.04 环境中从零执行成功；执行后 Node 24、MySQL 8.4、Nginx、ffmpeg、Piper 可用。
 - [ ] Piper 与声音模型（首发 `zh_CN-huayan-medium`、`en_US-amy-medium`）下载后校验 SHA-256，校验失败时脚本中止。

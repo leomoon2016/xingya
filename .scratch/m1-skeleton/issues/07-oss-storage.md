@@ -6,9 +6,11 @@
 
 依据：[deployment §9.2a](../../../docs/02-solution/deployment.md)、[ADR 0010](../../../docs/adr/0010-oss-cdn-publish-time-piper.md)、[nfr §8.1](../../../docs/01-requirements/nfr.md)“素材与 OSS”、开放问题 Q14。
 
+**人工步骤说明：** agent 可以编写 OSS 客户端、本地目录实现、权限策略文件与配置说明；开通 OSS 桶与 CDN、创建 RAM 子账号与 AccessKey、CDN 域名的 ICP 备案由项目负责人本人在阿里云账号中完成。
+
 **Blocked by:** [02 平台层和初始迁移](02-platform-layer.md)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 - [ ] 配置说明（或脚本）覆盖：一个与 ECS 同地域的私有桶，前缀 `draft/`、`materials/`、`pub/`、`xingya/db/`；`pub/` 经 CDN 提供并使用 OSS 私有桶回源鉴权；按内容哈希命名的文件 `Cache-Control: public, max-age=31536000, immutable`；CORS 只允许主站源与后台源；开启 Referer 防盗链；`xingya/db/` 生命周期 14 天删除。
 - [ ] RAM 子账号：api 用的子账号只能读写与复制本桶 `draft/`、`materials/`、`pub/`，不能删除桶、改策略或访问 `xingya/db/`；备份用的子账号只能写 `xingya/db/`。策略文档以文件形式提交，不含任何 AccessKey。
