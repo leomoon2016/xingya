@@ -3,7 +3,7 @@
 放所有模块共用的基础设施，不含业务规则。子目录：`db/`、`auth/`、`logging/`、`config/`（各有 README）。内容：
 
 - **db**：mysql2 连接池（Unix socket、`time_zone='+00:00'`）、Kysely 实例、事务助手（死锁自动重试 2 次）。
-- **session**：会话与家庭设备 Cookie 的解析、主体（家长/孩子/管理员）鉴权钩子。
+- **session**：会话与家庭设备 Cookie 的解析、主体（家长/孩子/系统管理员）鉴权钩子。
 - **idempotency**：`X-Client-Request-Id` 校验、`idempotency_requests` 占位与响应回放。
 - **error format**：统一错误体 `{error:{code,message,details,traceId}}` 与错误码映射。
 - **config**：读取 `/etc/xingya/secrets.env` 与环境变量，Zod 校验。

@@ -41,7 +41,7 @@
 | | questions | 题目可见部分（只追加） | level_id、question_key、seq 1–8、type、scored（`read_aloud`=0）、sense_id、visible JSON（CHECK 拒绝答案字段） |
 | | question_answers | 题目答案部分（只追加） | PK question_id、answer JSON、explanation |
 | learning（5） | plays | 作答 | kind level/review、course_version_id + level_id（复合外键：关卡属于该版本）、`UNIQUE(child_id, client_request_id)`、items（下发题目与选项顺序）、responses（每题第一次作答）、status、expires_at |
-| | level_progress | 最佳成绩 | PK(child_id, course_id, level_key)、best_stars 0–3、first_passed_at 与星数一致 |
+| | level_progress | 最佳星级 | PK(child_id, course_id, level_key)、best_stars 0–3、first_passed_at 与星级一致 |
 | | attempts | 闯关记录（只追加） | `UNIQUE(play_id)`、course_version_id + level_id、scored_count 4–8、生成列 accuracy_pct/stars/passed、stars_awarded、answers JSON、activity_date |
 | | review_items | 间隔复习条目 | item_type sense/question 与 sense_id/question_id 互斥、生成列 ref_id、`UNIQUE(child_id,item_type,ref_id)`、box 1–6、due_date |
 | | review_sessions | 复习结算（只追加） | `UNIQUE(play_id)`、item_count ≤ 20、生成列 completion_date + 唯一键（每天最多完成一次） |
@@ -55,7 +55,7 @@
 | | pet_tier_stages | 成长阶段 | PK(tier_id, stage_no 1–4)、name、min_level（第 1 阶段必须为 1）、unlocked_actions JSON 数组 |
 | | pet_species | 伙伴种类 | species_key、name 唯一、tier_id、status draft/in_review/published/unlisted（上架必须有审核人与时间）、design JSON、voice_id、voice_pitch 0.5–2.0 |
 | | pet_dens | 营地 | PK child_id、extra_slots ≤ 10、version |
-| | child_pets | 已领养伙伴（无 DELETE） | `UNIQUE(child_id, species_id)`、生成列 companion_key + 唯一（每人 1 只陪伴）、level/xp/total_xp、adopted_with、price_paid、adopt_ledger_id 唯一 |
+| | child_pets | 已领养伙伴（无 DELETE） | `UNIQUE(child_id, species_id)`、生成列 companion_key + 唯一（每人 1 只跟随伙伴）、level/xp/total_xp、adopted_with、price_paid、adopt_ledger_id 唯一 |
 | discovery（5） | yahaha_sets | 图鉴套组 | name 唯一、bonus_stars 1–50、status |
 | | yahaha_styles | 呀哈哈家族款式 | style_key、set_id、rarity、per_child_max 1–100、total_stock、placed_total ≤ total_stock、status（上架必须有审核人与时间）、design JSON |
 | | drop_rules | 投放规则 | rule_type campaign/course、status、source_text、spec JSON、trigger_type、effect、probability_pct 1–100、daily_cap 1–10、total_quantity/consumed（consumed ≤ total）、时间窗；类型与触发/效果组合、课程规则必须有课程、限定款式必须列款式等 CHECK |
@@ -79,7 +79,7 @@
 **系统设置初始值**：`ai.enabled=true`、`ai.model`、`registration.mode="invite"`、`discovery.enabled=true`、`discovery.spot_probability_pct=20`、`discovery.daily_cap=3`、`discovery.rarity_weights={common:100,uncommon:30,rare:10,legendary:2}`、`discovery.milestone_bonus={10:3,30:5,100:10}`、`companion.den_base_slots=3`、`companion.den_slot_prices=[30,60,120]`、`companion.fragment_pass_scope="per_level_per_day"`、`studio.default_monthly_cap_fen=20000`、`studio.unit_prices`、`studio.voices`、`learning.play_ttl_minutes=120`、`content.allow_self_review=true`、`agents.limits={max_steps:20, child_max_steps:3, max_pipeline_steps:6, llm_timeout_s:60, child_llm_timeout_s:20, tool_timeout_s:30, run_timeout_s:600, child_run_timeout_s:25, output_repair_attempts:1}`、`agents.page_routes`、`agents.stats_min_group=5`（各项含义见[开放问题](../01-requirements/open-questions.md) Q5–Q25）。0001 迁移还写入系统技能 `child-safety`（id 1，内容由 `xingya seeds:apply` 从仓库导入）与 7 个默认 AI 角色及其 v1 草稿版本（课程设计师、美术设计师、配音师、活动策划、质检员、运营分析师、呀哈哈队长；月度预算合计 ¥200，Q19），审核发布后才能运行。伙伴默认档位（初级/中级/高级/稀有，Q5）与每档 4 个成长阶段（Q8）同样由 0001 迁移写入 `pet_tiers`/`pet_tier_stages`，之后在后台修改（见 [companion 需求](../01-requirements/modules/companion.md)）。
 
 ### 6.2 租户隔离
-- 每张**家庭数据表**（家长、孩子、会话、作答、账本、伙伴、藏匿点、图鉴、社交、管控、报告等）都有 `family_id`；**全站共享的目录表**没有 `family_id`：词库与课程（words、word_senses、courses、course_versions、course_drafts、levels、questions、question_answers）、工作室（ai_jobs、ai_budget_months、assets、materials，以及技能与 AI 角色的 10 张表；其中运行记录只含管理端运行，孩子对话不进入）、shop_items、伙伴档位与种类（pet_tiers、pet_tier_stages、pet_species）、呀哈哈目录与规则（yahaha_sets、yahaha_styles、drop_rules）、admin_accounts 与平台表。目录表只有系统管理员能写（权限矩阵 A），孩子端只读取已发布/已上架的行，不含任何家庭数据。涉及孩子/家长的外键都是 `(family_id, child_id) → children(family_id, id)` 形式的复合外键，数据库层面保证一行不可能“挂”到别的家庭的孩子上（已实测）。
+- 每张**家庭数据表**（家长、孩子、会话、作答、账本、伙伴、藏匿点、图鉴、社交、管控、报告等）都有 `family_id`；**全站共享的目录表**没有 `family_id`：词库与课程（words、word_senses、courses、course_versions、course_drafts、levels、questions、question_answers）、工作室（ai_jobs、ai_budget_months、assets、materials，以及技能与 AI 角色的 10 张表；其中运行记录只含管理端运行，孩子对话不进入）、shop_items、伙伴档位与种类（pet_tiers、pet_tier_stages、pet_species）、呀哈哈家族目录与规则（yahaha_sets、yahaha_styles、drop_rules）、admin_accounts 与平台表。目录表只有系统管理员能写（权限矩阵 A），孩子端只读取已发布/已上架的行，不含任何家庭数据。涉及孩子/家长的外键都是 `(family_id, child_id) → children(family_id, id)` 形式的复合外键，数据库层面保证一行不可能“挂”到别的家庭的孩子上（已实测）。
 - 每个 repo 函数的第一个参数是 `familyId`（来自已鉴权主体，绝不来自请求体），查询必带该条件。集成测试按路由表自动生成“用 B 家庭会话访问 A 家庭资源 → 404”用例。
 
 ### 6.3 数据库账号
@@ -113,7 +113,7 @@
 | 邮件正文 | 发送成功即清空；邮件行 180 天 |
 | AI 任务 | 保留（费用审计）；结束 180 天后清空参数中的资料文本 |
 | AI 运行（agent_runs）与技能、角色版本 | 保留（费用与发布审计）；运行步骤（agent_run_steps）180 天后删除 |
-| 上传资料 | 由管理员删除（OSS 文件同时删除）；未被引用的草稿素材 90 天后归档 |
+| 上传资料 | 由系统管理员删除（OSS 文件同时删除）；未被引用的草稿素材 90 天后归档 |
 | 已发布课程版本、素材 | 永久（历史作答与复习引用） |
 | 学习、账本、伙伴、图鉴、消息、报告 | 家庭存续期间保留 |
 | 备份 | 本地与 OSS 各 14 天 |
@@ -122,15 +122,15 @@
 ## 附录 A 数据库验证结果
 
 - 环境：本机临时 MySQL 8.4.6（官方 minimal 二进制，独立数据目录与 socket，仅绑定 127.0.0.1），验证脚本 `db/verify/verify.mjs`（Node + mysql2，root 经 socket 连接），完成后删除库、账号并停止实例。
-- 2026-10-21 按设计变更修订后重新验证：**155 项全部通过**（完整输出见 `db/verify/result.txt`）；原有 73 项按新表名与新结构改写后全部保留（`star_ledger` → `ledger`、闯关改为 `play_id` 唯一、复习条目绑定义项、商店不含宠物等），并新增下列检查。
+- 2026-10-21 按设计变更修订后重新验证：**155 项全部通过**（完整输出见 `db/verify/result.txt`）；原有 73 项按新表名与新结构改写后全部保留（`star_ledger` → `ledger`、闯关改为 `play_id` 唯一、复习条目绑定义项、商店不含伙伴等），并新增下列检查。
 - 结构（第 7–9 部分时）：从空库应用两次，结构指纹（列、约束、CHECK、索引、外键、表级与列级授权）完全一致；表 55、外键 108、CHECK 133、非主键唯一键 54、生成列 12；指纹 `ab12eef1c3b3`。
-- 碎片账本只追加：应用账号对碎片流水 UPDATE/DELETE 被拒；碎片不能用于购买、不能由家长奖励（币种与类型 CHECK）；每个呀哈哈 1 片、复习完成 2 片（范围 CHECK）；碎片余额不可为负；同一 `source_key` 在同一币种只入账一次，不同币种各一次；“学习星”只统计星星的 level_pass/review_day/streak。
+- 碎片账本只追加：应用账号对碎片流水 UPDATE/DELETE 被拒；碎片不能用于购买、不能由家长奖励（币种与类型 CHECK）；每个呀哈哈家族成员 1 片、复习完成 2 片（范围 CHECK）；碎片余额不可为负；同一 `source_key` 在同一币种只入账一次，不同币种各一次；“学习星”只统计星星的 level_pass/review_day/streak。
 - 已发布版本不可修改：应用账号 UPDATE `questions`/`question_answers`/`levels`、DELETE `course_versions` 均被拒；同一草稿只能发布一次；课程当前版本必须属于本课程；每门课只有一份未完成草稿；未通过自动检查不能提交审核；发布前必须有审核人；义项释义不能改（列级授权）、义项 ID 必须以词 ID 为前缀；每关必须定义 3 个藏匿点。
 - 答案部分分离：可见部分含 `answer` 字段被 CHECK 拒绝；`questions` 表没有答案/解析列（information_schema 检查）。
 - 作答：同一请求 ID 只开始一次；作答的关卡必须属于所记录的版本；同一次作答只产生一条闯关记录。
-- 藏匿点：同一次通关同一藏匿点只记一次；每次通关最多 3 个；当天放置序号唯一（并发不超额）且 ≤ 10；有呀哈哈的藏匿点必须占当天序号；放置内容不能改（列级授权）；揭晓更新第一次影响 1 行、第二次 0 行；同一藏匿点只进一次图鉴、碎片只发一次；图鉴款式必须等于藏匿点款式；图鉴不能删除；款式放置数不超过全站库存。
+- 藏匿点：同一次通关同一藏匿点只记一次；每次通关最多 3 个；当天放置序号唯一（并发不超额）且 ≤ 10；有呀哈哈家族成员的藏匿点必须占当天序号；放置内容不能改（列级授权）；揭晓更新第一次影响 1 行、第二次 0 行；同一藏匿点只进一次图鉴、碎片只发一次；图鉴款式必须等于藏匿点款式；图鉴不能删除；款式放置数不超过全站库存。
 - 投放规则：概率 0 或 101、每日上限 11、限时活动无结束时间、课程规则未绑定课程、限定款式未列款式、消耗超过总量均被 CHECK 拒绝；系统设置中全局概率 1–100、每日上限 1–10、作答有效期 30–720 被 CHECK 约束，未知设置键连 migrator 也写不进。
 - 工作室：第 3 个并发任务被拒（槽位唯一）、槽位只能 1/2、运行中必须占槽位、本机进程任务同时最多 1 个；实际费用不得超过预估；预留 + 已花费不得超过月度上限；图片 ≤ 300 KB、AI 图片必须记录提示词；素材 OSS 路径不能改。
 - 第 10 部分重新验证：**207 项全部通过**（新增“每张表都有应用授权”全覆盖检查与约 50 项 Skill 与 AI 角色检查）；表 65、外键 145、CHECK 172、非主键唯一键 68、生成列 12；两次构建指纹一致 `b8a54a47ac17`。
 - Skill 与 AI 角色：默认 1 个系统技能、7 个角色与 7 个 v1 草稿由迁移写入；系统技能不能停用；技能/角色标识正则；输出模式必须是 object、工具 ≤ 20；导入/编辑来源与创建人一致；发布必须有审核人，面向孩子的技能与角色发布必须有儿童安全审核人；版本内容列不可改、受众不可改（列级授权）；当前版本必须属于本技能/角色；不在白名单的角色、受众不同的角色不能挂载；固定版本必须属于该技能；同一角色版本优先级唯一；角色预算 `reserved + spent ≤ cap` 且月份必须有全站预算行；运行只能是管理端角色（儿童角色版本插入 `agent_runs` 被拒）、步数 ≤ 20、实际 ≤ 预估、流水线 2–6 步且步骤序号唯一；步骤序号 1–20、工具步必须有工具名；快捷任务只能指向管理端角色；聊天用量只能关联儿童角色版本；`agents.limits` 越界（如 max_steps 21）与 `agents.stats_min_group` 越界被 CHECK 拒绝。
-- 学习伙伴：默认 4 个档位与 16 个阶段由迁移写入、档位价格范围、第 1 阶段从 1 级开始、上架必须经过审核、每人只有一只学习陪伴、同种伙伴每人一只、伙伴不能物理删除、营地扩建最多 10 格。
+- 伙伴：默认 4 个档位与 16 个阶段由迁移写入、档位价格范围、第 1 阶段从 1 级开始、上架必须经过审核、每人只有一只跟随伙伴、同种伙伴每人一只、伙伴不能物理删除、营地扩建最多 10 格。

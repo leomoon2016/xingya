@@ -5,7 +5,7 @@
 
 ## 职责
 
-共享词库；课程、草稿、不可变版本；表单编辑、自动检查（K1–K12）、学生视角试玩、审核、发布；题型判分器；模板注册（读取仓库 `seeds/course-templates/`）；内存中的头像、短语/表情、安全词表。
+共享词库；课程、草稿、不可变版本；表单编辑、自动检查（K1–K12）、孩子视角试玩、审核、发布；题型判分器；模板注册（读取仓库 `seeds/course-templates/`）；内存中的头像、短语/表情、安全词表。
 
 ## 拥有的表
 
@@ -17,7 +17,7 @@ words, word_senses, courses, course_versions, course_drafts, levels, questions, 
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md#34-模块与边界规则) 边界规则）；`repo.ts` 只访问上面列出的表。
 - 计划文件：`apps/api/src/modules/content/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`；单元测试在 `apps/api/test/unit/content/`。
-- 依赖：studio（生成与发布任务、素材）、family（管理员）。AI 流程由 AI 角色执行（课程设计师的技能 `course-analyze`、`course-generate`、`question-rewrite`；美术设计师 `course-illustration`；配音师 `course-voice`；质检员 `content-qa`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`materials.read`、`words.search`、`templates.read`、`courses.list`、`course.read_draft`、`course.write_draft`（只写草稿，每次写入都跑 K 规则）、`course.rewrite_question`、`course.attach_images`、`course.assign_voices`（写对话声音分配并生成试听音频）、`course.run_checks`；以及系统任务处理器 `publish_audio`（发布，确定性，复用试听音频的哈希）。**没有发布类工具**。
+- 依赖：studio（生成与发布任务、素材）、family（系统管理员）。AI 流程由 AI 角色执行（课程设计师的技能 `course-analyze`、`course-generate`、`question-rewrite`；美术设计师 `course-illustration`；配音师 `course-voice`；质检员 `content-qa`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`materials.read`、`words.search`、`templates.read`、`courses.list`、`course.read_draft`、`course.write_draft`（只写草稿，每次写入都跑 K 规则）、`course.rewrite_question`、`course.attach_images`、`course.assign_voices`（写对话声音分配并生成试听音频）、`course.run_checks`；以及系统任务处理器 `publish_audio`（发布，确定性，复用试听音频的哈希）。**没有发布类工具**。
 
 ## 接口
 
@@ -41,7 +41,7 @@ createCourse(admin, {id, subject, grade, sortOrder, templateId})
 openDraft(admin, courseId, {fromVersionId?}): Draft              // 每门课最多一份未完成草稿
 updateDraft(admin, draftId, patch & {version}): {draft, checkReport}  // 每次保存都跑 K 规则
 requestAiRewrite(admin, draftId, questionKey, hint?): RunId        // = studio.startTask(课程设计师, question-rewrite)
-previewLevel(admin, draftId, levelKey): LevelVisible               // 学生视角试玩（不记录）
+previewLevel(admin, draftId, levelKey): LevelVisible               // 孩子视角试玩（不记录）
 submitForReview(admin, draftId, version) / returnToDraft(admin, draftId, reason)
 publish(admin, draftId, version): JobId                            // 入队 publish_audio
 importSample(file): DraftId                                        // xingya course:import
@@ -54,7 +54,7 @@ avatars() / phrases() / emojis() / safetyLists()
 ```mermaid
 sequenceDiagram
   autonumber
-  participant A as 管理员
+  participant A as 系统管理员
   participant CO as content
   participant ST as studio
   participant W as 任务执行器

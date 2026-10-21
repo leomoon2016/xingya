@@ -13,7 +13,7 @@
 修订（[ADR 0015](0015-admin-app-and-seeds.md)）：可安装 PWA 只包含孩子端与家长中心（`apps/web`）；系统管理端是独立的 Web 应用 `apps/admin`（`admin.<域名>`，不做 PWA、无 Service Worker、独立 CSP）。
 
 ## 后果
-13 周可交付（2026-10-21 设计变更加入学习伙伴、呀哈哈发现与 AI 工作室后，总工期调整为约 19 周；第 10 部分“Skill 管理与 AI 角色”再 +1.5 周，约 20.5 周，见[路线图](../02-solution/roadmap.md)）；iOS Safari 的 PWA 录音/音频限制需降级处理。
+13 周可交付（2026-10-21 设计变更加入伙伴、呀哈哈发现与 AI 工作室后，总工期调整为约 19 周；第 10 部分“Skill 管理与 AI 角色”再 +1.5 周，约 20.5 周，见[路线图](../02-solution/roadmap.md)）；iOS Safari 的 PWA 录音/音频限制需降级处理。
 
 ## 未采用的方案
 同时做小程序与原生应用。

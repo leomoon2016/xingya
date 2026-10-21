@@ -1,8 +1,8 @@
 -- =====================================================================
 -- 0001_init.sql —— 星芽学园首个数据库迁移
--- 【草案，设计文档审核通过前可能调整】
+-- 【草案，设计文档评审通过前可能调整】
 -- 因尚未部署任何环境，2026-10-21 的设计变更（数据库课程与版本、共享词库、题目可见/答案分离、
--- 学习伙伴、呀哈哈发现、AI 工作室、碎片币种）直接修订本文件，而不是追加新的迁移文件。
+-- 伙伴、呀哈哈发现、AI 工作室、碎片币种）直接修订本文件，而不是追加新的迁移文件。
 -- 设计说明：docs/03-design/data-model.md；角色与授权：db/roles.sql；验证：db/verify/
 -- 目标：MySQL 8.4 LTS，InnoDB，utf8mb4；所有时间列存 UTC（连接 time_zone='+00:00'）
 -- 执行：首次初始化时第 0 段（CREATE DATABASE）需要 root；之后的迁移由 migrator 账号按文件名顺序
@@ -219,7 +219,7 @@ CREATE TABLE ai_jobs (                                       -- MySQL 中的后�
   params              JSON         NOT NULL,
   result              JSON         NULL,
   error               VARCHAR(500) NULL,
-  estimated_cost_fen  INT UNSIGNED NOT NULL DEFAULT 0,       -- 入队前展示给管理员并预留的费用上限（分）
+  estimated_cost_fen  INT UNSIGNED NOT NULL DEFAULT 0,       -- 入队前展示给系统管理员并预留的费用上限（分）
   actual_cost_fen     INT UNSIGNED NULL,
   budget_month        CHAR(7)      NOT NULL,                 -- 预算月份 YYYY-MM（UTC+8）
   attempts            TINYINT UNSIGNED NOT NULL DEFAULT 0,
@@ -309,7 +309,7 @@ CREATE TABLE materials (                                     -- 课程资料库�
 -- ---------------------------------------------------------------------
 -- 2b. Skill 与 AI 角色（studio，10 张；2026-10-21 设计变更 §4.10）
 --   技能 = 数据库中的版本化提示词包（无可执行代码）；角色 = 挂载技能的 AI 角色（每次保存 = 新版本）。
---   AI 只产出草稿；没有任何“发布”工具，发布永远由管理员在界面确认。
+--   AI 只产出草稿；没有任何“发布”工具，发布永远由系统管理员在界面确认。
 -- ---------------------------------------------------------------------
 CREATE TABLE agents (                                        -- AI 角色身份；配置在 agent_versions
   id                  SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -530,7 +530,7 @@ CREATE TABLE agent_runs (                                    -- 管理端 AI 运
   plan               JSON         NULL,                      -- pipeline：[{agentKey, instruction?}]
   job_id             BIGINT UNSIGNED NULL,                   -- ai_jobs 中 kind = agent_run 的任务
   page               VARCHAR(32)  NULL,                      -- 从哪个后台页面的一句话框发起
-  instruction        VARCHAR(1000) NOT NULL,                 -- 管理员的一句话（作为数据段传入，不作为系统指令）
+  instruction        VARCHAR(1000) NOT NULL,                 -- 系统管理员的一句话（作为数据段传入，不作为系统指令）
   input              JSON         NOT NULL,
   output             JSON         NULL,                      -- 已通过技能输出模式校验；只含草稿引用与说明
   error              VARCHAR(500) NULL,
@@ -716,7 +716,7 @@ CREATE TABLE levels (                                        -- 只追加：属�
   level_key         VARCHAR(32)  NOT NULL,                   -- 跨版本稳定（如 l01）；进度按 (课程, level_key) 记录
   seq               SMALLINT UNSIGNED NOT NULL,
   title             VARCHAR(60)  NOT NULL,
-  scene_asset_id    BIGINT UNSIGNED NULL,                    -- 关卡地图场景图（呀哈哈藏匿点所在）
+  scene_asset_id    BIGINT UNSIGNED NULL,                    -- 关卡地图场景图（藏匿点所在）
   pages             JSON         NULL,                       -- 绘本阅读课的分页内容（图、句、音频）
   hiding_spots      JSON         NOT NULL,                   -- 场景中的 3 个藏匿点定义 [{kind, x, y}]（呀哈哈发现用）
   PRIMARY KEY (id),
@@ -730,7 +730,7 @@ CREATE TABLE levels (                                        -- 只追加：属�
   CONSTRAINT ck_levels_spots CHECK (JSON_TYPE(hiding_spots) = 'ARRAY' AND JSON_LENGTH(hiding_spots) = 3)
 ) ENGINE=InnoDB;
 
-CREATE TABLE questions (                                     -- 只追加：学生可见部分（作答前只下发这一部分）
+CREATE TABLE questions (                                     -- 只追加：孩子可见部分（作答前只下发这一部分）
   id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   level_id     BIGINT UNSIGNED NOT NULL,
   question_key VARCHAR(32)  NOT NULL,                        -- 关卡内稳定键
@@ -944,7 +944,7 @@ CREATE TABLE balances (                                      -- 每孩子每币�
   CONSTRAINT ck_balances_nonneg CHECK (balance >= 0)
 ) ENGINE=InnoDB;
 
-CREATE TABLE shop_items (                                    -- 商店装扮（管理员维护；宠物改由 companion 模块提供）
+CREATE TABLE shop_items (                                    -- 商店装扮（系统管理员维护；伙伴不在商店，由 companion 模块提供）
   id                  VARCHAR(64)  NOT NULL,
   slot                ENUM('head','body','accessory') NOT NULL,
   name                VARCHAR(30)  NOT NULL,
@@ -1023,9 +1023,9 @@ CREATE TABLE redemptions (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 6. 学习伙伴 companion（5 张）
+-- 6. 伙伴 companion（5 张）
 -- ---------------------------------------------------------------------
-CREATE TABLE pet_tiers (                                     -- 档位：价格、领养门槛、等级曲线（管理员可配置）
+CREATE TABLE pet_tiers (                                     -- 档位：价格、领养门槛、等级曲线（系统管理员可配置）
   id                  SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name                VARCHAR(20)  NOT NULL,
   sort_order          SMALLINT     NOT NULL,
@@ -1104,7 +1104,7 @@ CREATE TABLE child_pets (                                    -- 孩子拥有的�
   level            TINYINT UNSIGNED NOT NULL DEFAULT 1,
   xp               INT UNSIGNED NOT NULL DEFAULT 0,          -- 当前等级内已积累的经验
   total_xp         INT UNSIGNED NOT NULL DEFAULT 0,
-  is_companion     TINYINT(1)   NOT NULL DEFAULT 0,          -- 学习陪伴（每个孩子最多 1 只）
+  is_companion     TINYINT(1)   NOT NULL DEFAULT 0,          -- 跟随伙伴（每个孩子最多 1 只）
   companion_key    TINYINT(1)   AS (IF(is_companion = 1, 1, NULL)) STORED,
   adopted_with     ENUM('star','fragment') NOT NULL,
   price_paid       INT UNSIGNED NOT NULL,
@@ -1169,7 +1169,7 @@ CREATE TABLE drop_rules (                                    -- 投放规则：�
   name                VARCHAR(40)  NOT NULL,
   rule_type           ENUM('campaign','course') NOT NULL,
   status              ENUM('draft','published','paused','ended') NOT NULL DEFAULT 'draft',
-  source_text         VARCHAR(500) NULL,                     -- 管理员的一句话描述（可空：直接用表单创建）
+  source_text         VARCHAR(500) NULL,                     -- 系统管理员的一句话描述（可空：直接用表单创建）
   spec                JSON         NOT NULL,                 -- 完整结构化规则（固定模式，见 discovery 设计）
   trigger_type        ENUM('level_pass','unit_first_all_three_star','specific_level_pass','streak_days') NOT NULL,
   effect              ENUM('raise_probability','restrict_styles','guaranteed') NOT NULL,
@@ -1212,7 +1212,7 @@ CREATE TABLE hiding_spots (                                  -- 通关时由服�
   local_date  DATE         NOT NULL,
   style_id    BIGINT UNSIGNED NULL,                          -- NULL = 空藏匿点
   rule_id     BIGINT UNSIGNED NULL,                          -- 决定本次放置的规则（NULL = 全局默认）
-  daily_seq   TINYINT UNSIGNED NULL,                         -- 当天第几个被放置的呀哈哈：唯一键 + 上限 10 由数据库保证
+  daily_seq   TINYINT UNSIGNED NULL,                         -- 当天第几个被放置的呀哈哈家族成员：唯一键 + 上限 10 由数据库保证
   revealed_at DATETIME(3)  NULL,                             -- 只能从 NULL 改为时间一次
   created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
@@ -1314,7 +1314,7 @@ CREATE TABLE messages (
   emoji_key           VARCHAR(32)  NULL,                     -- 仓库 seeds/phrases/emoji.json 白名单的键
   created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   read_at             DATETIME(3)  NULL,
-  hidden_at           DATETIME(3)  NULL,                     -- 举报后对举报方隐藏 / 管理员处理后隐藏
+  hidden_at           DATETIME(3)  NULL,                     -- 举报后对举报方隐藏 / 系统管理员处理后隐藏
   PRIMARY KEY (id),
   KEY ix_messages_recipient_child (recipient_child_id, created_at),
   KEY ix_messages_sender_child (sender_child_id, created_at),
@@ -1601,7 +1601,7 @@ INSERT INTO system_settings (setting_key, value) VALUES
   ('agents.limits',                   CAST('{"max_steps":20,"child_max_steps":3,"max_pipeline_steps":6,"llm_timeout_s":60,"child_llm_timeout_s":20,"tool_timeout_s":30,"run_timeout_s":600,"child_run_timeout_s":25,"output_repair_attempts":1}' AS JSON)),
   ('agents.page_routes',              CAST('{"courses":"course-designer","pets":"art-designer","yahaha":"art-designer","rules":"event-planner","skills":"qa-reviewer","agents":"qa-reviewer","runs":"ops-analyst","stats":"ops-analyst"}' AS JSON)),
   ('agents.stats_min_group',          CAST('5' AS JSON));
--- 学习伙伴默认档位与成长阶段（开放问题 Q5、Q8：已默认，可调整；管理员在后台修改）
+-- 伙伴默认档位与成长阶段（开放问题 Q5、Q8：已默认，可调整；系统管理员在后台修改）
 INSERT INTO pet_tiers (id, name, sort_order, star_price, fragment_price, adoption_threshold) VALUES
   (1, '初级', 1,  20,  40,   0),
   (2, '中级', 2,  50, 100, 100),
@@ -1618,7 +1618,7 @@ CROSS JOIN (
 ) s;
 -- 系统技能：儿童安全（不能停用；内容由 xingya seeds:apply 从仓库 seeds/skills/child-safety/ 导入）
 INSERT INTO skills (id, skill_key, audience, is_system) VALUES (1, 'child-safety', 'child', 1);
--- 默认 7 个 AI 角色（开放问题 Q19–Q21：已默认，可调整）。v1 为草稿：seeds:apply 挂载默认技能后，由管理员审核发布才能运行。
+-- 默认 7 个 AI 角色（开放问题 Q19–Q21：已默认，可调整）。v1 为草稿：seeds:apply 挂载默认技能后，由系统管理员审核发布才能运行。
 INSERT INTO agents (id, agent_key, audience, is_system) VALUES
   (1, 'course-designer', 'admin', 1),
   (2, 'art-designer',    'admin', 1),

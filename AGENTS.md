@@ -7,6 +7,7 @@
 - 所有文档只用 Markdown（.md），不使用 docx。
 - 本仓库目前只在本地，不推送远程。
 - 不要读取或提交任何密钥文件；生产密钥只在服务器 `/etc/xingya/secrets.env`。
+- 用词以根目录术语表 [GLOSSARY.md](GLOSSARY.md) 为准（例如“伙伴 / 跟随伙伴”“星级 / 学习星 / 奖励星”“审核 / 审批”），不要使用其中 _Avoid_ 列出的词。
 
 ## Agent skills
 
@@ -20,4 +21,4 @@
 
 ### Domain docs
 
-single-context：根目录 `GLOSSARY.md` + `docs/adr/`。See `docs/agents/domain.md`.
+single-context：根目录 [GLOSSARY.md](GLOSSARY.md) + `docs/adr/`。See `docs/agents/domain.md`.

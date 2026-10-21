@@ -1,12 +1,13 @@
 # 文档索引
 
+- [../GLOSSARY.md](../GLOSSARY.md)：术语表（权威）：家庭与账号、学习内容、星级/星星/学习星/奖励星、伙伴/跟随伙伴、呀哈哈队长/呀哈哈家族、审核/审批等规范用词与“避免”用词；写文档前先读
 - [01-requirements/PRD.md](01-requirements/PRD.md)：产品需求：术语、背景与目标、用户决定与假设、成功标准、与旧系统的取舍
 - [01-requirements/modules/family.md](01-requirements/modules/family.md)：家庭账号需求：家庭与角色、家长与孩子账号、登录方式、会话
 - [01-requirements/modules/content.md](01-requirements/modules/content.md)：课程内容需求：内容结构、课程生命周期（草稿/审核/版本）、共享词库、题目可见部分与答案部分
 - [01-requirements/modules/learning.md](01-requirements/modules/learning.md)：学习需求：课程开放与解锁、题型、判分与星级、作答（plays）与逐题反馈、间隔复习、连续天数
 - [01-requirements/modules/stars.md](01-requirements/modules/stars.md)：星星需求：星星来源、账本与余额、碎片账本、商店与装扮、现实奖励兑换
 - [01-requirements/modules/social.md](01-requirements/modules/social.md)：社交需求：赠送、周排行榜、消息、好友家庭
-- [01-requirements/modules/companion.md](01-requirements/modules/companion.md)：学习伙伴需求：档位与领养、碎片、营地、成长、互动、AI 伙伴设计
+- [01-requirements/modules/companion.md](01-requirements/modules/companion.md)：伙伴需求：档位与领养、碎片、营地、成长、互动、AI 伙伴设计
 - [01-requirements/modules/discovery.md](01-requirements/modules/discovery.md)：呀哈哈发现需求：藏匿点、概率与上限、款式与图鉴、投放规则与 AI 一句话规则
 - [01-requirements/modules/studio.md](01-requirements/modules/studio.md)：AI 工作室与 AI 生成课程需求：资料上传、按模板生成、自动检查、任务与费用预算、素材库
 - [01-requirements/modules/agents.md](01-requirements/modules/agents.md)：Skill 管理与 AI 角色需求（§4.10，属于 studio）：技能与版本、技能库后台、7 个默认 AI 角色、角色的技能配置、便捷功能与流水线
@@ -23,7 +24,7 @@
 - [03-design/modules/learning.md](03-design/modules/learning.md)：学习模块设计（含闯关提交时序图）
 - [03-design/modules/stars.md](03-design/modules/stars.md)：星星模块设计（含兑换时序图）
 - [03-design/modules/social.md](03-design/modules/social.md)：社交模块设计
-- [03-design/modules/companion.md](03-design/modules/companion.md)：学习伙伴模块设计（含领养时序图）
+- [03-design/modules/companion.md](03-design/modules/companion.md)：伙伴模块设计（含领养时序图）
 - [03-design/modules/discovery.md](03-design/modules/discovery.md)：呀哈哈发现模块设计（规则结构、放置算法、揭晓）
 - [03-design/modules/studio.md](03-design/modules/studio.md)：AI 工作室模块设计（任务执行器、费用预估与预算、提示词安全、素材）
 - [03-design/modules/agents.md](03-design/modules/agents.md)：Skill 与 AI 角色模块设计（studio）：表与数据库保证、工具目录、提示词组装、角色执行器、流水线、呀哈哈队长同步路径、导入导出
@@ -93,7 +94,7 @@
 | §4.4.3 | [01-requirements/modules/controls.md](01-requirements/modules/controls.md) |
 | §4.4.4 | [01-requirements/modules/chat.md](01-requirements/modules/chat.md) |
 | §4.1.1a–c | [01-requirements/modules/content.md](01-requirements/modules/content.md) |
-| §4.6（学习伙伴） | [01-requirements/modules/companion.md](01-requirements/modules/companion.md)、[03-design/modules/companion.md](03-design/modules/companion.md) |
+| §4.6（伙伴） | [01-requirements/modules/companion.md](01-requirements/modules/companion.md)、[03-design/modules/companion.md](03-design/modules/companion.md) |
 | §4.7（呀哈哈发现） | [01-requirements/modules/discovery.md](01-requirements/modules/discovery.md)、[03-design/modules/discovery.md](03-design/modules/discovery.md) |
 | §4.8（AI 生成课程）、§4.9（AI 工作室） | [01-requirements/modules/studio.md](01-requirements/modules/studio.md)、[03-design/modules/studio.md](03-design/modules/studio.md) |
 | §4.10（Skill 管理与 AI 角色） | [01-requirements/modules/agents.md](01-requirements/modules/agents.md)、[03-design/modules/agents.md](03-design/modules/agents.md) |

@@ -7,7 +7,7 @@
 | `content/` | 课程内容 |
 | `learning/` | 学习 |
 | `stars/` | 星星 |
-| `companion/` | 学习伙伴 |
+| `companion/` | 伙伴 |
 | `discovery/` | 呀哈哈发现 |
 | `social/` | 社交 |
 | `chat/` | AI 聊天（呀哈哈队长） |

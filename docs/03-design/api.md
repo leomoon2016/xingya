@@ -9,7 +9,7 @@
 ### 5.1 约定
 - 基础路径 `/api/v1`；JSON（UTF-8）；字段 camelCase；时间用 ISO 8601 UTC，本地日期用 `YYYY-MM-DD`。
 - 鉴权：Cookie `xy_sid`（以后客户端可用 `Authorization: Bearer`）；家庭设备接口另需 `xy_device`。
-- 两个站点（ADR 0015）：主站 `<域名>` 提供孩子、家长与公开接口；`/api/v1/admin/*` **只**在后台域名 `admin.<域名>` 上可用——主站 Nginx 对该前缀返回 404，服务端也按 `Host` 拒绝（返回 404）。后台会话 Cookie `xy_admin_sid` 只发给后台域名（不设 `Domain`、`Secure`、`HttpOnly`、`SameSite=Strict`）；主站的 `xy_sid` 同样不设 `Domain`，两站互不携带。管理员主体只能由后台 Cookie 建立。
+- 两个站点（ADR 0015）：主站 `<域名>` 提供孩子、家长与公开接口；`/api/v1/admin/*` **只**在后台域名 `admin.<域名>` 上可用——主站 Nginx 对该前缀返回 404，服务端也按 `Host` 拒绝（返回 404）。后台会话 Cookie `xy_admin_sid` 只发给后台域名（不设 `Domain`、`Secure`、`HttpOnly`、`SameSite=Strict`）；主站的 `xy_sid` 同样不设 `Domain`，两站互不携带。系统管理员主体只能由后台 Cookie 建立。
 - 所有写请求（含注册、登录等未登录接口）都必须带 `X-Client-Request-Id`：对已登录写请求它是幂等键（[§4.5.1](../01-requirements/nfr.md)），对未登录接口只用于防跨站伪造。服务端只接受同源请求：校验 `Origin`（主站与后台各自只接受本站源），不开放 CORS；由于自定义请求头会触发预检而预检不被允许，跨站伪造请求无法成功。
 - 需要乐观锁的请求体带 `version`。列表接口用游标分页 `?cursor=&limit=`（limit ≤ 50）。
 - 所有请求/响应体由 `packages/contracts` 中的 Zod 模式定义，前后端共用；未知字段拒绝。
@@ -96,7 +96,7 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | --- | --- | --- |
 | GET /assets/config | 公开 | 素材 CDN 前缀（Service Worker 用） |
 | GET /courses | K | 已开放课程及进度摘要 |
-| GET /courses/:courseId/map | K | 关卡路线图（锁定/可玩/已通过/星数，按当前版本；含“今天还能找 N 个”） |
+| GET /courses/:courseId/map | K | 关卡路线图（锁定/可玩/已通过/星级，按当前版本；含“今天还能找 N 个”） |
 | POST /levels/:levelId/plays | K | 开始闯关作答：只返回题目可见部分（选项已打乱、选项与词块 ID 已换成本次作答的随机令牌）与素材 CDN 地址，不含答案 |
 | POST /plays/:playId/answers | K | 提交一题 `{questionId, response}` → `{correct, correctOptionId/answer, explanation}`；每题只记第一次 |
 | POST /plays/:playId/finish | K | 完成：结算星星、碎片、伙伴经验、复习入队，返回 3 个藏匿点（只有编号与位置）；幂等 |
@@ -129,7 +129,7 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | GET /companion/den | K | 我的营地：格数、下一次扩建价格、已领养伙伴（等级、经验、阶段、已解锁动作、素材） |
 | POST /companion/adoptions | K | 领养 `{speciesId, payWith: star\|fragment, expectedPrice}` |
 | POST /companion/den/expansions | K | 扩建营地 `{expectedPrice}` |
-| PUT /companion/active | K | 设为学习陪伴 `{childPetId}` |
+| PUT /companion/active | K | 设为跟随伙伴 `{childPetId}` |
 | GET /children/:id/companion | P | 家长查看孩子的伙伴 |
 
 **discovery**
@@ -197,7 +197,7 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | GET · POST /admin/studio/courses · POST /admin/studio/courses/:id/drafts | 课程列表、建课程、基于当前版本开草稿 |
 | GET · PATCH /admin/studio/drafts/:id | 草稿（表单数据 + 检查结果，乐观锁） |
 | POST /admin/studio/drafts/:id/analyze · /generate · /questions/:key/rewrite | AI 分析资料 / 按模板生成 / 重写一题（= 课程设计师的角色任务，返回 `runId`） |
-| GET /admin/studio/drafts/:id/preview/:levelKey | 学生视角试玩（不记录） |
+| GET /admin/studio/drafts/:id/preview/:levelKey | 孩子视角试玩（不记录） |
 | POST /admin/studio/drafts/:id/submit · /return · /publish | 提交审核 / 退回 / 发布（入队 publish_audio） |
 | GET /admin/studio/courses/:id/versions | 版本历史 |
 | GET /admin/studio/templates | 模板列表（只读，来自仓库） |

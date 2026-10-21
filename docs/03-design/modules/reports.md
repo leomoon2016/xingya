@@ -17,7 +17,7 @@ daily_reports, email_outbox
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md) 边界规则）；`repo.ts` 只访问上面列出的表。
 - 计划文件：`apps/api/src/modules/reports/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`；单元测试在 `apps/api/test/unit/reports/`。
-- 第 10 部分：启动时向 studio 注册运营分析师的只读工具 `stats.aggregate`（全站聚合：活跃孩子数、通关与复习完成率、碎片与呀哈哈发放量等；按年级/周分组，分组少于 `agents.stats_min_group` 个孩子的结果不返回；不含任何家庭或孩子标识），见 [agents.md](agents.md#工具目录v10)。
+- 第 10 部分：启动时向 studio 注册运营分析师的只读工具 `stats.aggregate`（全站聚合：活跃孩子数、通关与复习完成率、碎片与呀哈哈家族成员发放量等；按年级/周分组，分组少于 `agents.stats_min_group` 个孩子的结果不返回；不含任何家庭或孩子标识），见 [agents.md](agents.md#工具目录v10)。
 
 ## 接口（原 §3.5）
 
@@ -28,7 +28,7 @@ daily_reports, email_outbox
 ```ts
 getDailyReports(p, childId, from, to) / getTodayLive(p, childId) / getWeekly(p, childId, isoWeek)
 runNightlyAggregation(now)                             // 每 15 分钟调度，按家庭时区处理“昨天”
-                                                       // 读取 learning/stars/discovery/chat/controls 的 statsForDay（含碎片收入、找到的呀哈哈）
+                                                       // 读取 learning/stars/discovery/chat/controls 的 statsForDay（含碎片收入、找到的呀哈哈家族成员）
 enqueueWeeklyReports(now)                              // 每 5 分钟调度，周日 20:00 后入队
 enqueueEmail(tx | db, {kind, dedupeKey, to, subject, html, text, familyId?, parentId?})
 sendDueEmails(now)                                     // 每 30 秒

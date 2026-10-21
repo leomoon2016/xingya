@@ -60,7 +60,7 @@ const expectOk = async (name, conn, sql, params) => {
   catch (e) { ok(name, false, `${e.code}: ${e.message.slice(0, 120)}`); }
 };
 
-// 3) migrator：DDL；管理员账号（课程与工作室数据需要）
+// 3) migrator：DDL；系统管理员账号（课程与工作室数据需要）
 await expectOk('migrator 可执行 DDL', mig, `CREATE TABLE zz_tmp (id INT PRIMARY KEY); DROP TABLE zz_tmp`);
 await expectOk('migrator 建系统管理员', mig, `INSERT INTO admin_accounts (id,username,password_hash,totp_secret_enc) VALUES (1,'ops','h',X'00')`);
 const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -201,7 +201,7 @@ await expectErr('复合外键：只能兑换本家庭的奖励', app, `INSERT IN
 await app.query(`INSERT INTO redemptions (id,family_id,child_id,reward_option_id,title_snapshot,price) VALUES (1,1,1,1,'周末看电影',10)`);
 await expectErr('CHECK：批准必须记录家长与时间', app, `UPDATE redemptions SET status='approved' WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 
-// 12) 学习伙伴
+// 12) 伙伴
 await expectErr('CHECK：档位星价 1–5000', app, `INSERT INTO pet_tiers (name,sort_order,star_price,fragment_price) VALUES ('免费',0,0,10)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 { const [[t]] = await app.query(`SELECT (SELECT COUNT(*) FROM pet_tiers) tiers, (SELECT COUNT(*) FROM pet_tier_stages) stages, (SELECT star_price FROM pet_tiers WHERE id=1) p1`);
   ok('默认档位 4 个、成长阶段 16 个由迁移写入（初级 20 星）', Number(t.tiers) === 4 && Number(t.stages) === 16 && Number(t.p1) === 20, JSON.stringify(t)); }

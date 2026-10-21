@@ -29,7 +29,7 @@
 4. `e2e`：构建 web、admin 与服务，启动 MySQL、服务、LLM/图像/OCR 桩、Piper 桩、本地 OSS 目录与 SMTP 桩，运行 `apps/web/e2e` 与 `apps/admin/e2e`；检查 web 构建产物中不含后台代码（路由、组件名与 `/api/v1/admin` 字符串扫描）。
 5. `deploy`（仅 main，GitHub Environment 保护）：SSH（专用部署密钥，固定 known_hosts）上传发布包到 `/opt/xingya/releases/<ts-version>/`（`api/`、`web/`、`admin/`、`seeds/` 四个子目录）→ `xingya migrate`（migrator 账号，按版本号应用 `db/migrations` 中未应用的文件，校验已应用文件的 checksum）→ root 执行 `db/roles.sql`（幂等，补齐新表授权）→ `xingya seeds:apply`（migrator 账号，幂等：只插入 `seeds/` 中缺失的装扮、默认技能与角色挂载，从不修改或删除已有行）→ 切换 `/opt/xingya/current` 软链接 → `systemctl restart xingya` → 30 秒内 `/api/v1/health` 返回新版本，否则切回上一个软链接并重启、流水线失败。
 - 迁移只前进，并遵守“先扩展、后收缩”：任何迁移都必须与上一个发布的代码兼容，回滚只回代码不回库。
-- 部署**不导入任何课程**：课程、伙伴、呀哈哈款式在后台制作与发布，存在数据库与 OSS；发布新代码不影响已发布内容。`seeds:apply` 只补齐内置数据中缺失的行；`seeds/samples/` 示例课程只在运维手动执行 `xingya course:import` 时导入。模板、安全词表、短语、头像由 api 启动时从发布目录的 `seeds/` 读取，不入库。
+- 部署**不导入任何课程**：课程、伙伴、呀哈哈家族款式在后台制作与发布，存在数据库与 OSS；发布新代码不影响已发布内容。`seeds:apply` 只补齐内置数据中缺失的行；`seeds/samples/` 示例课程只在运维手动执行 `xingya course:import` 时导入。模板、安全词表、短语、头像由 api 启动时从发布目录的 `seeds/` 读取，不入库。
 - 技能与 AI 角色（第 10 部分）：角色执行器在 xingya 服务进程内运行（属于“任务执行器”，不新增进程或内存预算；技能里没有可执行代码，不会启动任何子进程）。系统守则 `seeds/safety/agent-guard.md` 随发布包更新，工具目录随 api 更新。默认技能与角色挂载由每次部署的 `xingya seeds:apply` 补齐（已存在的技能不覆盖，只导入缺失的 v1 草稿与白名单），之后技能与角色只在后台修改；部署不会覆盖后台的修改。
 - 首次部署：`deploy/scripts/bootstrap.sh`（root 执行一次）安装 Node 24、MySQL 8.4、Nginx、ffmpeg，安装 Piper 到 `/opt/xingya/piper/bin` 与声音模型到 `/opt/xingya/piper/voices`（校验 SHA-256），创建 `xingya` 系统用户（`loginctl enable-linger xingya`）、目录（含 `/var/lib/xingya/tmp`）、swap、systemd 单元，执行 `db/migrations/0001_init.sql` 第 0 段（建库）与 `db/roles.sql`、设置账号口令；之后运行 `xingya admin:create`（`xingya seeds:apply` 已在部署步骤中执行），可选 `xingya course:import` 导入示例课程草稿。
 

@@ -11,9 +11,11 @@
 | 首次通过或星级提高 | `level_pass` | 1–3（差额） | 是 |
 | 完成当日复习 | `review_day` | 2 | 是 |
 | 连续天数里程碑 | `streak` | 3 / 7 / 20 | 是 |
-| 呀哈哈发现奖励（集齐套组、累计里程碑） | `discovery_bonus` | 1–50 | 否 |
+| 呀哈哈家族发现奖励（集齐套组、累计里程碑） | `discovery_bonus` | 1–50 | 否 |
 | 家长手动奖励 | `parent_award` | 1–50 / 次，只能加 | 否 |
 | 收到赠送 | `gift_in` | 1–20 | 否 |
+
+前三种来源统称**学习星**；后三种统称**奖励星**：可以花，但不计入排行、伙伴经验和领养门槛（见 [GLOSSARY.md](../../../GLOSSARY.md)）。
 
 点喇叭、看卡片、登录、聊天等被动行为一律不发星。星星支出：`purchase`（装扮）、`pet_adopt`（用星星领养伙伴）、`den_expand`（扩建营地）、`gift_out`、`redeem_hold`（冻结）、`redeem_release`（释放）、`redeem_debit`（批准扣除）。
 
@@ -29,7 +31,7 @@
 - 装扮（`head`/`body`/`accessory` 三个槽位）由系统管理员在后台维护：ID、名称、价格（1–1000）、图片（素材库）、上架/下架；初始数据来自仓库 `seeds/shop/`。图片必须原创或已授权（提示词禁止词表同样适用于上传的名称与描述）。
 - 购买 `POST /shop/purchases {itemId, expectedPrice}`：服务端读取**当前**价格；与 `expectedPrice` 不同 → `409 PRICE_CHANGED`（返回新价格，孩子确认后重试）；已下架 → `404`；已拥有 → `409 ALREADY_OWNED`；余额不足 → `409 INSUFFICIENT_STARS`。成功则同一事务写 `purchase` 流水（`source_key = purchase:{itemId}`）与 `child_items`。
 - 每件物品每个孩子只能买一次；无退货、无转赠。下架物品不再出售，已拥有的仍可穿戴。
-- 穿戴：`PUT /me/equipment {slot, itemId | null}`；每个槽位最多一件（唯一键）。学习伙伴不在商店里，见 [companion 需求](companion.md)。
+- 穿戴：`PUT /me/equipment {slot, itemId | null}`；每个槽位最多一件（唯一键）。伙伴不在商店里，见 [companion 需求](companion.md)。
 
 ## 4.2.3 现实奖励兑换
 - 家长维护本家庭的奖励清单（标题 ≤40 字、星价 1–2000、启用/停用，乐观锁）。

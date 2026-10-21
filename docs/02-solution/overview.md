@@ -9,7 +9,7 @@
 ```mermaid
 flowchart LR
   subgraph Client["主站 <域名>：浏览器 / 可安装 PWA（apps/web）"]
-    Kid["孩子端（头像墙、闯关、复习、藏匿点与图鉴、学习伙伴、商店、消息、呀哈哈队长）"]
+    Kid["孩子端（头像墙、闯关、复习、藏匿点与图鉴、伙伴、商店、消息、呀哈哈队长）"]
     Par["家长中心"]
     SW["Service Worker：应用外壳 + 当前课程素材缓存"]
   end
@@ -52,7 +52,7 @@ flowchart LR
 ## 3.2 技术栈
 | 层 | 选型 | 说明 |
 | --- | --- | --- |
-| 前端 | React 19、Vite、React Router、TanStack Query、vite-plugin-pwa（Workbox）、CSS Modules | 两个前端应用：`apps/web`（孩子端与家长中心两个懒加载路由块，可安装 PWA）与 `apps/admin`（系统管理端，独立构建、独立子域名与 CSP，不做 PWA；ADR 0015），共享 `packages/ui` 主题；伙伴与呀哈哈动画用“关键帧图片 + 动效模板”客户端渲染（CSS/Web Animations） |
+| 前端 | React 19、Vite、React Router、TanStack Query、vite-plugin-pwa（Workbox）、CSS Modules | 两个前端应用：`apps/web`（孩子端与家长中心两个懒加载路由块，可安装 PWA）与 `apps/admin`（系统管理端，独立构建、独立子域名与 CSP，不做 PWA；ADR 0015），共享 `packages/ui` 主题；伙伴与呀哈哈家族动画用“关键帧图片 + 动效模板”客户端渲染（CSS/Web Animations） |
 | 服务端 | Node 24 LTS、TypeScript（strict）、Fastify 5、Zod（请求/响应/课程文档/AI 输出共用）、Kysely、mysql2、pino、nodemailer、阿里云 OSS SDK | 单进程；时间统一通过可注入的 `Clock` 获取（测试可控） |
 | 数据库 | MySQL 8.4 LTS、InnoDB、utf8mb4、REPEATABLE READ | 连接 `time_zone='+00:00'`；所有 DATETIME 存 UTC；任务队列也在 MySQL |
 | 文档抽取 | 在 worker 线程中抽取 PDF 文字层、docx、pptx 文本（`resourceLimits` 限制堆 128 MB、超时 60 秒；docx/pptx 解压总量 ≤ 100 MB、条目数 ≤ 2000，防压缩炸弹；不执行宏、不解析外部链接）；照片走云端 OCR 适配器 | 扫描版 PDF 首发不支持 |
@@ -354,7 +354,7 @@ xingya/
 | `deploy/scripts` | 是 | → `/opt/xingya/scripts/` |
 | `docs/`、`.github/`、测试目录 | 否 | |
 
-**没有课程包。** 课程、词库、伙伴、呀哈哈款式与规则都在数据库；图片、音频、动画素材都在阿里云 OSS（`pub/` 经 CDN 提供）；服务器上只额外安装 Piper 二进制与声音模型。
+**没有课程包。** 课程、词库、伙伴、呀哈哈家族款式与规则都在数据库；图片、音频、动画素材都在阿里云 OSS（`pub/` 经 CDN 提供）；服务器上只额外安装 Piper 二进制与声音模型。
 
 服务器目录布局：
 
@@ -389,7 +389,7 @@ xingya/
 | 课程内容 | content | words, word_senses, courses, course_versions, course_drafts, levels, questions, question_answers；内存中的模板、头像、短语/表情、安全词表 | 8 |
 | 学习 | learning | plays, level_progress, attempts, review_items, review_sessions | 5 |
 | 星星 | stars | ledger, balances, shop_items, child_items, reward_options, redemptions | 6 |
-| 学习伙伴 | companion | pet_tiers, pet_tier_stages, pet_species, pet_dens, child_pets | 5 |
+| 伙伴 | companion | pet_tiers, pet_tier_stages, pet_species, pet_dens, child_pets | 5 |
 | 呀哈哈发现 | discovery | yahaha_sets, yahaha_styles, drop_rules, hiding_spots, yahaha_finds | 5 |
 | 社交 | social | family_friendships, gifts, messages, blocks, abuse_reports | 5 |
 | AI 聊天（呀哈哈队长） | chat | ai_chat_usage | 1 |
@@ -432,7 +432,7 @@ xingya/
 | 夜间汇总 | 每 15 分钟检查 | 对本地时间已过 00:30 且“昨天”尚未汇总的家庭生成 `daily_reports`（幂等 UPSERT） |
 | 周报入队 | 每 5 分钟检查 | 对本地时间为周日 20:00–23:59 的家庭，为每个已验证邮箱且订阅的家长入队，去重键 `weekly:{parentId}:{ISO周}` |
 | 邮件发送 | 每 30 秒 | 发送到期邮件；退避 1m/5m/30m/2h/6h…，最多 10 次后 `failed` 并告警 |
-| 账本对账 | 每天 04:00（UTC+8） | 每个孩子每个币种 `SUM(delta)` = `balances.balance` = 最后一行 `balance_after`；`yahaha_styles.placed_total` = 该款式藏匿点数；不一致写审计并发管理员告警 |
+| 账本对账 | 每天 04:00（UTC+8） | 每个孩子每个币种 `SUM(delta)` = `balances.balance` = 最后一行 `balance_after`；`yahaha_styles.placed_total` = 该款式藏匿点数；不一致写审计并发系统管理员告警 |
 | 数据清理 | 每天 04:30（UTC+8） | AI 元数据 > 90 天、幂等记录 > 30 天、过期会话/令牌、已发送邮件正文（发送后即清空，此处兜底）、发送完成 > 180 天的邮件行、已结束 > 180 天的 AI 任务参数中的资料文本、90 天未被引用的草稿素材归档、AI 运行步骤（`agent_run_steps`）> 180 天（运行汇总 `agent_runs` 保留） |
 
 调度器在任务执行时用 MySQL `GET_LOCK('xingya:job:<name>', 0)` 防止重叠执行（例如部署切换瞬间两个进程并存）；AI 任务的并发由数据库槽位保证，与 `GET_LOCK` 无关。
