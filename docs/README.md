@@ -145,3 +145,7 @@
 | §4.1.5、§4.2.3、§4.6.1 时序图 | `03-design/modules/learning.md`、`03-design/modules/stars.md`、`03-design/modules/companion.md` |
 
 > 本仓库所有文档均为 Markdown。
+
+## AI 协作配置
+
+- [`docs/agents/`](agents/issue-tracker.md)：任务单存放规则、状态名、术语与 ADR 读取规则（入口见根目录 `AGENTS.md`）。
