@@ -1,0 +1,31 @@
+/* PROTOTYPE（用完即弃）：原型切换器与状态面板。刻意做成黑白等宽的“工具”样子，和三套设计都不像。 */
+.pp-switch {
+  position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 100;
+  display: flex; align-items: center; gap: 2px; padding: 4px;
+  background: #000; color: #fff; border: 2px dashed #fff; border-radius: 999px;
+  font: 600 14px/1 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  box-shadow: 0 0 0 2px #000;
+}
+.pp-switch button {
+  min-width: 44px; height: 44px; padding: 0 10px; border: 0; border-radius: 999px;
+  background: #000; color: #fff; font: inherit; font-size: 18px;
+}
+.pp-switch .pp-state { white-space: nowrap; font-size: 13px; border: 1px solid #fff; margin-left: 4px; }
+.pp-switch button:hover { background: #333; }
+.pp-switch button:focus-visible { outline: 3px solid #FFEA00; outline-offset: 0; }
+.pp-label { padding: 0 6px; white-space: nowrap; font-family: var(--cjk-sans); }
+.pp-panel {
+  position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 100;
+  width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 90px); overflow-y: auto;
+  background: #000; color: #fff; border: 2px dashed #fff; border-radius: 12px; padding: 12px 14px;
+  font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+}
+.pp-title { font-family: var(--cjk-sans); font-weight: 700; margin-bottom: 6px; }
+.pp-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+.pp-panel dt { opacity: .7; font-family: var(--cjk-sans); }
+.pp-panel dd { margin: 0; font-family: var(--cjk-sans); }
+.pp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pp-actions button { min-height: 36px; padding: 0 10px; background: #fff; color: #000; border: 0; border-radius: 6px; font: 600 13px var(--cjk-sans); }
+.pp-actions button:focus-visible { outline: 3px solid #FFEA00; }
+
+@media (max-width: 767px) { .pp-switch { font-size: 13px; } .pp-switch button { min-width: 40px; padding: 0 8px; } .pp-label { padding: 0 2px; } }

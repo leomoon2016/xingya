@@ -1,0 +1,73 @@
+/* PROTOTYPE（用完即弃）：三套方案共用的重置、自托管英文字体、呀哈哈队长与提示条。各方案用 CSS 变量换皮。 */
+@font-face { font-family: "Andika XY"; src: url(../fonts/andika-regular.woff) format("woff"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Andika XY"; src: url(../fonts/andika-bold.woff) format("woff"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Playpen XY"; src: url(../fonts/playpen-sans-500.woff) format("woff"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Playpen XY"; src: url(../fonts/playpen-sans-700.woff) format("woff"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Lexend XY"; src: url(../fonts/lexend-var.woff) format("woff"); font-weight: 100 900; font-display: swap; }
+
+:root {
+  --cjk-sans: "HarmonyOS Sans SC", "PingFang SC", "MiSans", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --proto-bar: 64px; /* 给底部原型切换器留的位置，设计内容不被它挡住 */
+  --tap: 44px;
+  --focus: #1B5CFF;
+  --cap-bg: #fff; --cap-ink: #222; --cap-accent: #2E7D4F; --cap-soft: #EEF6EF; --cap-btn-ink: #fff;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: var(--cjk-sans); }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+svg { display: block; }
+h1, h2, h3, p { margin: 0; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+[role="button"]:focus-visible { outline: none; }
+[role="button"]:focus-visible .focus-ring { stroke: var(--focus); stroke-width: 4; }
+.focus-ring { fill: none; stroke: transparent; }
+.ic { width: 24px; height: 24px; }
+.xy-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#app { min-height: 100vh; padding-bottom: var(--proto-bar); }
+@media (max-width: 767px) { #app { padding-bottom: calc(var(--proto-bar) + 72px); } }
+
+/* 呀哈哈队长：右下角浮动入口（chat 需求：所有页面右下角） */
+.xy-captain {
+  position: fixed; right: 16px; bottom: calc(var(--proto-bar) + 8px); z-index: 40;
+  width: 64px; height: 64px; padding: 4px; border-radius: 50%;
+  border: 3px solid var(--cap-accent); background: var(--cap-bg);
+}
+.xy-captain-art { width: 100%; height: 100%; }
+.xy-chat {
+  position: fixed; right: 16px; bottom: calc(var(--proto-bar) + 84px); z-index: 41;
+  width: min(360px, calc(100vw - 32px)); max-height: min(460px, calc(100vh - 180px));
+  display: flex; flex-direction: column; background: var(--cap-bg); color: var(--cap-ink);
+  border: 3px solid var(--cap-accent); border-radius: 22px; overflow: hidden;
+}
+.xy-chat-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; background: var(--cap-soft); }
+.xy-chat-head h2 { flex: 1; font-size: 17px; }
+.xy-chat-face { width: 36px; height: 36px; }
+.xy-chat-close { width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; }
+.xy-chat-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 16px; line-height: 1.55; }
+.xy-chat-cap { display: flex; gap: 6px; align-items: flex-start; }
+.xy-chat-cap p { background: var(--cap-soft); padding: 8px 12px; border-radius: 4px 16px 16px 16px; }
+.xy-chat-me { align-self: flex-end; background: var(--cap-accent); color: var(--cap-btn-ink); padding: 8px 12px; border-radius: 16px 4px 16px 16px; }
+.xy-chat-say { flex: none; width: var(--tap); height: var(--tap); border-radius: 50%; border: 2px solid var(--cap-accent); background: var(--cap-bg); display: grid; place-items: center; color: var(--cap-accent); }
+.xy-chat-chips { display: flex; gap: 8px; padding: 0 12px 8px; flex-wrap: wrap; }
+.xy-chat-chips button { min-height: var(--tap); padding: 0 14px; border-radius: 22px; border: 2px solid var(--cap-accent); background: var(--cap-bg); font-size: 15px; }
+.xy-chat-form { display: flex; gap: 8px; padding: 0 12px; }
+.xy-chat-form input { flex: 1; min-width: 0; min-height: var(--tap); border: 2px solid var(--cap-accent); border-radius: 14px; padding: 0 12px; background: #fff; color: #222; }
+.xy-chat-form button { min-height: var(--tap); padding: 0 16px; border: 0; border-radius: 14px; background: var(--cap-accent); color: var(--cap-btn-ink); font-weight: 700; }
+.xy-chat-left { padding: 6px 12px 10px; font-size: 13px; opacity: .8; }
+
+.xy-toast {
+  position: fixed; left: 50%; top: 16px; z-index: 60; transform: translate(-50%, -140%);
+  max-width: calc(100vw - 32px); padding: 12px 18px; border-radius: 16px;
+  background: var(--cap-ink); color: var(--cap-bg); font-size: 16px; line-height: 1.4; text-align: center;
+  transition: transform .25s ease;
+}
+.xy-toast.is-on { transform: translate(-50%, 0); }
+.xy-toast:empty { visibility: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }

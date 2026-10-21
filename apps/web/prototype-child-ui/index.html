@@ -1,0 +1,27 @@
+<!doctype html>
+<!--
+  PROTOTYPE（用完即弃）—— 孩子端长什么样？
+  三套结构不同的方案（A 藤蔓小路 / B 贴纸本 / C 伙伴小岛），用 ?variant=A|B|C 切换，底部正中的黑色药丸是原型切换器。
+  纯静态、无依赖、状态只在内存。只存在于分支 prototype/child-ui，不合入 main。说明见同目录 README.md。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>星芽学园孩子端（原型）</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="proto/base.css">
+  <link rel="stylesheet" id="variant-css" href="variants/a.css">
+  <link rel="stylesheet" href="proto/switcher.css">
+</head>
+<body>
+  <div id="app"></div>
+  <div id="proto-chrome"></div>
+  <script src="proto/art.js"></script>
+  <script src="proto/core.js"></script>
+  <script src="variants/a.js"></script>
+  <script src="variants/b.js"></script>
+  <script src="variants/c.js"></script>
+  <script src="proto/boot.js"></script>
+</body>
+</html>
