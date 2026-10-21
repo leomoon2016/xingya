@@ -34,7 +34,6 @@
 - [06-releases/v1.0/acceptance.md](06-releases/v1.0/acceptance.md)：v1.0 验收清单
 - [06-releases/v1.0/release-notes.md](06-releases/v1.0/release-notes.md)：v1.0 发布说明
 - [adr/README.md](adr/README.md)：架构决策记录索引（ADR 0001–0007）
-- [xingya-设计文档合集.docx](xingya-设计文档合集.docx)：合集：01–03 全部文档与 v1.0 范围，供审阅
 
 ## 原规格章节 → 文件
 
@@ -126,3 +125,5 @@
 | §3.3 | 由批准的仓库目录结构取代，见 [02-solution/overview.md](02-solution/overview.md) |
 | §3.5 | 按模块拆入 `03-design/modules/*.md` 的“接口”一节 |
 | §4.1.5、§4.2.3 时序图 | `03-design/modules/learning.md`、`03-design/modules/stars.md` |
+
+> 文档统一使用 Markdown，不再生成 docx。
