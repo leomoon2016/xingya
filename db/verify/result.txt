@@ -1,7 +1,7 @@
 # 验证结果（2026-10-21，临时 MySQL 8.4.6，node db/verify/verify.mjs db/migrations/0001_init.sql db/roles.sql）
 
-PASS  从空库应用两次结构指纹一致  — b8a54a47ac17 / b8a54a47ac17
-PASS  表数=65  — {"tables":65,"fks":145,"checks":172,"uniques":68,"generated":12}
+PASS  从空库应用两次结构指纹一致  — 7314879eb6ac / 7314879eb6ac
+PASS  表数=67  — {"tables":67,"fks":149,"checks":180,"uniques":71,"generated":12}
 PASS  授权全覆盖：每张表都有应用角色授权  — []
 PASS  xingya 账号只有 @localhost（角色除外）  — [{"user":"xingya_app_role","host":"%"},{"user":"xingya_migrator_role","host":"%"},{"user":"xingya_app","host":"localhost"},{"user":"xingya_migrator","host":"localhost"}]
 PASS  migrator 可执行 DDL
@@ -31,13 +31,24 @@ PASS  CHECK：义项 ID 必须以所属词 ID 为前缀  — ER_CHECK_CONSTRAINT
 PASS  UNIQUE：同学科同拼写只有一个词  — ER_DUP_ENTRY: Duplicate entry 'english-apple' for key 'words.uq_words_text'
 PASS  权限：app 不能改义项释义（列级授权）  — ER_COLUMNACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for column 'meaning_zh' in table 'w
 PASS  app 可更新义项图片
-PASS  建课程与草稿
-PASS  UNIQUE：每门课同时只有一份未完成草稿  — ER_DUP_ENTRY: Duplicate entry 'en-g1-u01-1' for key 'course_drafts.uq_course_drafts_open'
+PASS  建课程（一册一门：一年级上册、下册）与草稿
+PASS  UNIQUE：每门课同时只有一份未完成草稿  — ER_DUP_ENTRY: Duplicate entry 'en-g1-a-1' for key 'course_drafts.uq_course_drafts_open'
 PASS  CHECK：未通过自动检查不能提交审核  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_course_drafts_checked' is violated.
 PASS  CHECK：发布前必须有审核人  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_course_drafts_reviewed' is violated.
-PASS  发布：插入版本、关卡、题目（可见部分）与答案
+PASS  发布：插入版本、单元、关卡、题目（可见部分）与答案
 PASS  CHECK：每关必须定义 3 个藏匿点  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_levels_spots' is violated.
 PASS  复合外键：课程的当前版本必须属于本课程  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`courses`, CONS
+PASS  UNIQUE：同一课程版本内 unit_key 唯一  — ER_DUP_ENTRY: Duplicate entry '1-u01' for key 'units.uq_units_key'
+PASS  UNIQUE：同一课程版本内单元顺序唯一  — ER_DUP_ENTRY: Duplicate entry '1-2' for key 'units.uq_units_seq'
+PASS  CHECK：unit_key 格式  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_units_key' is violated.
+PASS  外键：单元必须属于已发布版本  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`units`, CONSTR
+PASS  不同单元可以有相同的 level_key（u02 的 l01）
+PASS  UNIQUE：单元内 level_key 唯一  — ER_DUP_ENTRY: Duplicate entry '1-l01' for key 'levels.uq_levels_key'
+PASS  UNIQUE：单元内关卡顺序唯一  — ER_DUP_ENTRY: Duplicate entry '1-1' for key 'levels.uq_levels_seq'
+PASS  发布另一门课程（一年级下册）的版本与单元
+PASS  复合外键：关卡的单元必须属于同一课程版本  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`levels`, CONST
+PASS  不可变：app 不能修改已发布单元  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'units'
+PASS  不可变：app 不能删除已发布单元  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'units'
 PASS  CHECK：题目可见部分不得含答案字段  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_questions_visible' is violated.
 PASS  CHECK：read_aloud 不能计分  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_questions_scored' is violated.
 PASS  题目表不含答案/解析列（答案在 question_answers）  — id,level_id,question_key,seq,type,scored,sense_id,visible
@@ -54,7 +65,15 @@ PASS  生成列：4/5 => 80%、1 星、通过  — {"accuracy_pct":80,"stars":1,
 PASS  生成列：7/8=87%→1 星；3/4=75%→未通过；5/5→3 星  — [[80,1,1],[87,1,1],[75,0,0],[100,3,1]]
 PASS  幂等：同一次作答只产生一条闯关记录  — ER_DUP_ENTRY: Duplicate entry '1' for key 'attempts.uq_attempts_play'
 PASS  CHECK：每关计分题至少 4 道  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_attempts_counts' is violated.
-PASS  CHECK：通关进度星数与首次通过时间一致  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_level_progress_passed' is violated.
+PASS  CHECK：关卡进度的最佳星级与首次通过时间一致  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_level_progress_passed' is violated.
+PASS  关卡进度按 (课程, unit_key, level_key)：u01/l01 与 u02/l01 各一行
+PASS  UNIQUE：同一单元同一关卡只有一行进度  — ER_DUP_ENTRY: Duplicate entry '1-en-g1-a-u01-l01' for key 'level_progress.PRIMARY'
+PASS  单元进度：u01 全部关卡通过且全 3 星级
+PASS  UNIQUE：同一孩子同一单元只有一行进度（首次全 3 星级只触发一次）  — ER_DUP_ENTRY: Duplicate entry '1-en-g1-a-u01' for key 'unit_progress.PRIMARY'
+PASS  CHECK：单元已通过关卡数不超过关卡数  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_unit_progress_counts' is violated.
+PASS  CHECK：3 星级关卡数不超过已通过关卡数  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_unit_progress_counts' is violated.
+PASS  CHECK：单元全 3 星级必须先完成单元  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_unit_progress_three_star' is violated.
+PASS  复合外键：单元进度的孩子必须属于同一家庭  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`unit_progress`
 PASS  权限：app 不能 UPDATE 闯关记录  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'attempts'
 PASS  复习条目（义项）
 PASS  UNIQUE：同一孩子同一义项只有一条复习条目  — ER_DUP_ENTRY: Duplicate entry '1-sense-en.apple.fruit' for key 'review_items.uq_review_items_ref'
@@ -77,7 +96,7 @@ PASS  同一 source_key 在不同币种下各记一次
 PASS  幂等：碎片同一 source_key 只入账一次  — ER_DUP_ENTRY: Duplicate entry '1-fragment-review:2026-10-21' for key 'ledger.uq_ledger_source'
 PASS  CHECK：碎片不能用于购买装扮（币种与类型匹配）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  CHECK：碎片不能由家长奖励（无被动或人工来源）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
-PASS  CHECK：每个呀哈哈只给 1 片碎片  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  CHECK：每个呀哈哈家族成员只给 1 片碎片  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
 PASS  CHECK：复习完成碎片固定 2 片  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
 PASS  CHECK：碎片余额不可为负  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_balance' is violated.
 PASS  权限：app 不能 UPDATE 碎片流水  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'ledger'
@@ -97,19 +116,19 @@ PASS  CHECK：档位星价 1–5000  — ER_CHECK_CONSTRAINT_VIOLATED: Check con
 PASS  默认档位 4 个、成长阶段 16 个由迁移写入（初级 20 星）  — {"tiers":4,"stages":16,"p1":20}
 PASS  CHECK：第 1 阶段从 1 级开始  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_tier_stages_first' is violated.
 PASS  CHECK：上架的伙伴必须经过审核  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_species_published' is violated.
-PASS  用碎片领养伙伴（第一只自动成为学习陪伴）
+PASS  用碎片领养伙伴（第一只自动成为跟随伙伴）
 PASS  用星星领养第二只
-PASS  UNIQUE：每个孩子只有一只学习陪伴  — ER_DUP_ENTRY: Duplicate entry '1-1' for key 'child_pets.uq_child_pets_companion'
+PASS  UNIQUE：每个孩子只有一只跟随伙伴  — ER_DUP_ENTRY: Duplicate entry '1-1' for key 'child_pets.uq_child_pets_companion'
 PASS  UNIQUE：同种伙伴每人一只  — ER_DUP_ENTRY: Duplicate entry '1-1' for key 'child_pets.uq_child_pets_species'
 PASS  权限：app 不能物理删除伙伴  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'child_pets'
 PASS  CHECK：营地扩建最多 10 格  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_dens_extra' is violated.
 PASS  CHECK：放置数量不得超过全站库存  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_yahaha_styles_stock' is violated.
-PASS  通关打开 3 个藏匿点（1 个有呀哈哈）
+PASS  通关打开 3 个藏匿点（1 个有呀哈哈家族成员）
 PASS  UNIQUE：同一次通关同一藏匿点只记一次  — ER_DUP_ENTRY: Duplicate entry '1-1' for key 'hiding_spots.uq_hiding_spots_attempt'
 PASS  CHECK：每次通关最多 3 个藏匿点  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_hiding_spots_no' is violated.
 PASS  UNIQUE：当天放置序号不可重复（并发放置不会超额）  — ER_DUP_ENTRY: Duplicate entry '1-2026-10-21-1' for key 'hiding_spots.uq_hiding_spots_daily'
 PASS  CHECK：每孩子每天放置上限不超过 10  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_hiding_spots_seq' is violated.
-PASS  CHECK：有呀哈哈的藏匿点必须占用当天序号  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_hiding_spots_seq' is violated.
+PASS  CHECK：有呀哈哈家族成员的藏匿点必须占用当天序号  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_hiding_spots_seq' is violated.
 PASS  权限：app 不能改藏匿点内容（列级授权）  — ER_COLUMNACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for column 'style_id' in table 'hid
 PASS  只能揭晓一次：第一次影响 1 行，重复点开影响 0 行  — 1/0
 PASS  揭晓：图鉴 +1、碎片 +1
@@ -123,7 +142,14 @@ PASS  CHECK：概率不得高于 100%  — ER_CHECK_CONSTRAINT_VIOLATED: Check c
 PASS  CHECK：每孩子每日上限不得超过 10  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_cap' is violated.
 PASS  CHECK：限时活动必须有结束时间  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_type' is violated.
 PASS  CHECK：课程设定规则必须绑定课程  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_type' is violated.
-PASS  合法的课程设定规则（单元首次全三星必得）
+PASS  合法的课程设定规则（指向课程：单元首次全 3 星级必得）
+PASS  合法的课程设定规则（指向单元 u03：单元首次全 3 星级必得）
+PASS  合法的课程设定规则（指向关卡：指定关卡通关提高概率）
+PASS  CHECK：范围中有关卡必须同时有单元  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_scope' is violated.
+PASS  CHECK：范围目标不允许未知字段  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_scope' is violated.
+PASS  CHECK：课程 ID 格式（范围目标）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_scope' is violated.
+PASS  CHECK：单元首次全 3 星级不能指向关卡  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_trigger_scope' is violated.
+PASS  CHECK：指定关卡通关的每个目标都必须是关卡  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_trigger_scope' is violated.
 PASS  CHECK：限定款式必须列出款式  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_effect' is violated.
 PASS  CHECK：已消耗数量不得超过总量  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_quantity' is violated.
 PASS  CHECK：好友关系 low<high  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_friendships_order' is violated.
@@ -152,6 +178,9 @@ PASS  app 可切换 AI 总开关
 PASS  CHECK：全局每日上限 1–10  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_daily_cap' is violated.
 PASS  CHECK：全局藏匿点概率 1–100  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_probability' is violated.
 PASS  CHECK：作答有效期 30–720 分钟  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_play_ttl' is violated.
+PASS  CHECK：单元关卡数范围 min ≤ max（默认 3–6）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_unit_levels' is violated.
+PASS  CHECK：单元关卡数上限不超过 12  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_unit_levels' is violated.
+PASS  app 可把单元关卡数调整为 4–8
 PASS  CHECK：系统设置键白名单（migrator 也不能写入未知键）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_key' is violated.
 PASS  app 可把全局概率改为 25%
 PASS  CHECK：周报去重键  — ER_DUP_ENTRY: Duplicate entry 'weekly:1:2026-W43' for key 'email_outbox.uq_email_outbox_dedupe'
@@ -208,5 +237,5 @@ PASS  CHECK：工具循环上限设置不超过 20 步  — ER_CHECK_CONSTRAINT_
 PASS  CHECK：运营分析最小分组 3–50  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_stats_group' is violated.
 PASS  角色本身为锁定账号（不可登录）
 
-结构统计: {"tables":65,"fks":145,"checks":172,"uniques":68,"generated":12}
-合计 207 项，通过 207，失败 0
+结构统计: {"tables":67,"fks":149,"checks":180,"uniques":71,"generated":12}
+合计 236 项，通过 236，失败 0

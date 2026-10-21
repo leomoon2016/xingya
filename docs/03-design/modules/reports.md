@@ -26,9 +26,9 @@ daily_reports, email_outbox
 **reports**
 
 ```ts
-getDailyReports(p, childId, from, to) / getTodayLive(p, childId) / getWeekly(p, childId, isoWeek)
+getDailyReports(p, childId, from, to) / getTodayLive(p, childId) / getWeekly(p, childId, isoWeek)   // 周报含各单元进度（learning.unitProgress）
 runNightlyAggregation(now)                             // 每 15 分钟调度，按家庭时区处理“昨天”
-                                                       // 读取 learning/stars/discovery/chat/controls 的 statsForDay（含碎片收入、找到的呀哈哈家族成员）
+                                                       // 读取 learning/stars/discovery/chat/controls 的 statsForDay（含碎片收入、找到的呀哈哈家族成员、首次完成单元数 → daily_reports.units_completed）
 enqueueWeeklyReports(now)                              // 每 5 分钟调度，周日 20:00 后入队
 enqueueEmail(tx | db, {kind, dedupeKey, to, subject, html, text, familyId?, parentId?})
 sendDueEmails(now)                                     // 每 30 秒

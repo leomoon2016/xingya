@@ -8,7 +8,7 @@
 ## 拥有的表
 skills, skill_versions, skill_allowed_agents, agents, agent_versions, agent_skills, agent_budget_months, agent_runs, agent_run_steps, quick_tasks（共 10 张，属于 studio；studio 合计 14 张）
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)。要点：
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。要点：
 
 | 保证 | 实现 |
 | --- | --- |
@@ -66,7 +66,7 @@ stats({skillVersionId|agentId, from, to}): {runs, successRate, avgCostFen, p50La
 | studio | `assets.search`、`assets.read`、`jobs.summary` | admin | 只读：素材检索、任务与费用汇总 |
 | studio | `qa.write_report` | admin | 质检报告写入运行输出，显示在对应审核页（不改变草稿状态） |
 | content | `materials.read`、`words.search`、`templates.read`、`courses.list`、`course.read_draft`、`course.run_checks` | admin | 只读 / 跑 K 规则 |
-| content | `course.write_draft`、`course.rewrite_question`、`course.attach_images`、`course.assign_voices` | admin | 只写课程草稿（每次写入都跑 K 规则） |
+| content | `course.write_draft`、`course.rewrite_question`、`course.attach_images`、`course.assign_voices` | admin | 只写课程草稿（每次写入都跑 K 规则；`course.write_draft` 的 `scope = course \| unit`，按单元写入时不动其他单元） |
 | companion | `pet.read_design`、`pet.write_design`、`pet.write_voice` | admin | 读 / 写伙伴种类草稿 |
 | discovery | `styles.read`、`yahaha.read_style`、`yahaha.write_style`、`yahaha.write_voice`、`rules.read`、`rule.write_draft`、`rule.estimate_impact` | admin | 读 / 写款式与规则草稿；规则草稿不生效 |
 | reports | `stats.aggregate` | admin | 只读全站聚合，分组 < `agents.stats_min_group` 的结果不返回 |

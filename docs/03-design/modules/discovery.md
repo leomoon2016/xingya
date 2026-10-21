@@ -10,13 +10,13 @@
 
 yahaha_sets, yahaha_styles, drop_rules, hiding_spots, yahaha_finds
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)。审计写入 family 的 `audit_events`（`target_type = 'drop_rule' | 'yahaha_style' | 'discovery_settings'`），没有单独的审计表。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。审计写入 family 的 `audit_events`（`target_type = 'drop_rule' | 'yahaha_style' | 'discovery_settings'`），没有单独的审计表。
 
 ## 边界
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md#34-模块与边界规则) 边界规则）；`repo.ts` 只访问上面列出的表。
 - 计划文件：`apps/api/src/modules/discovery/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`；单元测试在 `apps/api/test/unit/discovery/`。
-- 依赖：stars（碎片与奖励星）、content（课程/关卡范围校验、藏匿点定义）、studio（款式设计、规则填写任务）、family（审计）。被 learning 调用 `placeSpotsInTx`。
+- 依赖：stars（碎片与奖励星）、content（课程/单元/关卡范围校验、藏匿点定义）、studio（款式设计、规则填写任务）、family（审计）。被 learning 调用 `placeSpotsInTx`。
 - 款式设计与规则填写由 AI 角色执行（美术设计师 `yahaha-style-design`、配音师 `yahaha-voice`、质检员 `content-qa`、活动策划 `drop-rule-fill` / `campaign-plan`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`styles.read`、`yahaha.write_style`（候选与关键帧写入款式草稿）、`yahaha.write_voice`、`yahaha.read_style`、`rules.read`、`rule.write_draft`（只写 RuleSpec 草稿，不生效）、`rule.estimate_impact`。**没有发布、生效类工具**。
 
 ## 接口
@@ -24,7 +24,7 @@ yahaha_sets, yahaha_styles, drop_rules, hiding_spots, yahaha_finds
 以 TypeScript 签名表示（省略 `Promise<>`；`P` = 已鉴权主体 Principal；`Tx` = Kysely 事务）。
 
 ```ts
-placeSpotsInTx(tx, {attempt, child, courseId, levelKey, grade, trigger}): SpotView[3]   // 只返回编号、种类、位置
+placeSpotsInTx(tx, {attempt, child, courseId, unitKey, levelKey, grade, trigger}): SpotView[3]   // 只返回编号、种类、位置
 leftToday(child): number                                                               // “今天还能找 N 个”
 reveal(child, spotId): {found: false} | {found: true, style, fragment, bonus[]}
 getAlbum(child): {sets: [{set, styles: [{style | silhouette, count}]}], total}
@@ -45,22 +45,22 @@ stats(range): DiscoveryStats
   "type": "campaign",                         // campaign | course
   "startsAt": "2026-10-01T00:00:00+08:00", "endsAt": "2026-10-08T00:00:00+08:00",   // campaign 必填 endsAt
   "audience": { "grades": [1] },              // 空 = 全部孩子
-  "scope": { "courseIds": ["en-g1-u03"], "levelKeys": [] },   // course 类型 courseIds ≥ 1
-  "trigger": { "kind": "level_pass" },        // level_pass | unit_first_all_three_star | specific_level_pass{levelKey} | streak_days{days 2–60}
+  "scope": { "targets": [ { "courseId": "en-g1-a", "unitKey": "u03" } ] },   // 1–20 个目标：{courseId} 整门课程 | {courseId, unitKey} 单元 | {courseId, unitKey, levelKey} 关卡；course 类型必填，campaign 可省略（= 全部课程）
+  "trigger": { "kind": "level_pass" },        // level_pass | unit_first_all_three_star（目标只能是课程或单元）| specific_level_pass（目标必须全部是关卡）| streak_days{days 2–60}
   "effect": { "kind": "raise_probability", "probabilityPct": 40 },   // raise_probability{1–100} | restrict_styles | guaranteed
   "styleIds": [3, 4, 5],                       // 可空 = 全部已上架；restrict_styles 时必填
   "dailyCap": 4,                               // 1–10，可空 = 用全局
   "totalQuantity": 500                         // ≥ 1，可空 = 不限
 }
 ```
-- 校验（服务端，先于数据库 CHECK）：类型与触发/效果的组合（限时活动只能“通关”+ 提高概率/限定款式；课程规则只能 首次全 3 星级/指定关卡/连续 N 天/通关 + 必得/提高概率）；概率 1–100；每日上限 1–10；总量 ≥ 1；`endsAt > startsAt`；课程与关卡存在；款式已上架；年级 1–6。AI 输出不合模式 → 任务失败并显示原因，不保存。
+- 校验（服务端，先于数据库 CHECK）：类型与触发/效果的组合（限时活动只能“通关”+ 提高概率/限定款式；课程规则只能 首次全 3 星级/指定关卡/连续 N 天/通关 + 必得/提高概率）；概率 1–100；每日上限 1–10；总量 ≥ 1；`endsAt > startsAt`；目标的课程、单元、关卡在当前版本中存在（数据库只校验结构，存在性由服务端校验；新版本删掉某单元/关卡后，规则详情页标出“目标已不存在”）；有 `levelKey` 必须有 `unitKey`；款式已上架；年级 1–6。AI 输出不合模式 → 任务失败并显示原因，不保存。
 - **复述**由固定模板生成（不经 AI），例如：“10 月 1 日 0:00 到 10 月 8 日 0:00，一年级孩子在 Unit 3 通关时，每个藏匿点有 40% 的机会出现呀哈哈家族成员，只会出现森林套组的 3 种；每人每天最多 4 个；整个活动最多 500 个。”
 - **影响估算**：取近 14 天数据，`每日通关次数 r`（受众内每孩子平均）、受众孩子数 `n`、天数 `d`：每孩子每天预计放置 `min(3 × r × p_rule, cap)`，相比全局默认多出 `min(3 × r × p_rule, cap) − min(3 × r × p_global, cap_global)`；期间预计消耗 `min(n × d × 每孩子每天预计放置, totalQuantity)`；必得类按触发条件近 14 天的发生次数估算。
 - **重叠**：时间窗相交且受众/课程范围相交的已发布规则列入 `overlaps`，发布前必须确认。
 
 ## 放置算法（`placeSpotsInTx`，在结算事务内）
 1. `discovery.enabled = false` → 3 个空藏匿点。
-2. 收集适用规则：`status = published`、当前在时间窗内、受众与课程/关卡匹配、触发条件满足（由 learning 传入 `trigger`：是否单元首次全 3 星级、关卡键、连续天数）、总量未用完。
+2. 收集适用规则：`status = published`、当前在时间窗内、受众匹配、本次关卡命中任一目标（目标只有 `courseId` → 同课程；有 `unitKey` → 同课程同单元；有 `levelKey` → 同一关卡；campaign 没有范围 → 全部）、触发条件满足（由 learning 传入 `trigger`：`unitFirstAllThreeStar`（本次结算让该单元首次全部 3 星级）、`streakDays`；`specific_level_pass` 即本关命中某个关卡目标）、总量未用完。
 3. 合并：`p = max(全局概率, 各规则 probabilityPct)`；`cap = min(全局上限, 各规则 dailyCap)`；限定款式取交集（为空时取概率最高那条规则的款式）；任一规则为“必得”则 `guaranteed = true`。
 4. 款式池：已上架款式 ∩ 限定 − 已达 `per_child_max` 的 − `placed_total = total_stock` 的。池为空 → 全部为空藏匿点。
 5. 计算今天已放置数 `used`（`SELECT MAX(daily_seq) … FOR UPDATE` on 该孩子当天的藏匿点）；可放置 `room = cap − used`。

@@ -10,7 +10,7 @@
 
 ai_jobs, ai_budget_months, assets, materials，以及 Skill 与 AI 角色的 10 张表（skills, skill_versions, skill_allowed_agents, agents, agent_versions, agent_skills, agent_budget_months, agent_runs, agent_run_steps, quick_tasks；见 [agents.md](agents.md)），共 14 张
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。
 
 ## 边界
 
@@ -52,7 +52,7 @@ checkPrompt(text): {ok} | {blocked: term[]}
 - 本机进程：`systemd-run --user --scope -p MemoryMax=350M -p RuntimeMaxSec=120 <bin> …`，参数数组传递，不经 shell；输入文本只允许字母、数字、常用标点与中文字符；临时文件在 `/var/lib/xingya/tmp/<jobId>/`，结束即删。
 
 ## 费用预估与预算
-- 单价表 `studio.unit_prices`（分）：`llm_per_1k_tokens_fen`、`image_fen`（每张）、`ocr_page_fen`、`tts_fen`（本机 Piper 为 0）。预估 = 按任务（AI 角色运行或系统任务）的上限参数（最大 token、张数、页数）计算，因此是**上限**；`actual ≤ estimated` 由 CHECK 保证，提供方实际计费超过预估时按预估记账并告警（单价表需要调整）。
+- 单价表 `studio.unit_prices`（分）：`llm_per_1k_tokens_fen`、`image_fen`（每张）、`ocr_page_fen`、`tts_fen`（本机 Piper 为 0）。预估 = 按任务（AI 角色运行或系统任务）的上限参数（最大 token、张数、页数）计算，因此是**上限**；课程生成按单元计算（每单元 = 模板的每单元关卡数上限 × 每关题数 × 单价，加配图张数），整门课程 = 各单元之和，结果带 `units[{unitKey, fen}]` 明细；`actual ≤ estimated` 由 CHECK 保证，提供方实际计费超过预估时按预估记账并告警（单价表需要调整）。
 - 入队事务：`SELECT ai_budget_months WHERE budget_month = 本月 FOR UPDATE`（不存在则按默认上限插入）→ `reserved += 预估` → CHECK `reserved + spent ≤ cap`，违反 → `409 AI_BUDGET_EXCEEDED`。
 - AI 角色运行另有角色预算 `agent_budget_months`：同一事务内先锁 `ai_budget_months` 再锁 `agent_budget_months`，两者都满足 `reserved + spent ≤ cap`（违反 → `409 AI_BUDGET_EXCEEDED`，`details.scope = global | agent`）。
 - 呀哈哈队长聊天由 chat 调用 `runChildAgent` 同步执行，**计入**全站与角色预算（Q13 修订）；不足 → `503 AI_BUDGET_EXHAUSTED`（[agents.md](agents.md#呀哈哈队长同步chat-调用)）。

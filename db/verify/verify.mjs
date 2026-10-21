@@ -38,7 +38,7 @@ await root.query('DROP DATABASE xingya');
 await root.query(SQL);
 const fp2 = await fingerprint(); const c2 = await counts();
 ok('从空库应用两次结构指纹一致', fp1 === fp2, `${fp1.slice(0, 12)} / ${fp2.slice(0, 12)}`);
-ok('表数=65', c2.tables === 65, JSON.stringify(c2));
+ok('表数=67', c2.tables === 67, JSON.stringify(c2));
 { const [miss] = await root.query(`SELECT table_name t FROM information_schema.tables WHERE table_schema='xingya' AND table_name NOT IN (SELECT Table_name FROM mysql.tables_priv WHERE Db='xingya' AND User='xingya_app_role')`);
   ok('授权全覆盖：每张表都有应用角色授权', miss.length === 0, JSON.stringify(miss)); }
 
@@ -103,22 +103,41 @@ await expectErr('CHECK：义项 ID 必须以所属词 ID 为前缀', app, `INSER
 await expectErr('UNIQUE：同学科同拼写只有一个词', app, `INSERT INTO words (id,subject,text) VALUES ('en.apple-2','english','apple')`, [], ['ER_DUP_ENTRY']);
 await expectErr('权限：app 不能改义项释义（列级授权）', app, `UPDATE word_senses SET meaning_zh='香蕉' WHERE id='en.apple.fruit'`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
 await expectOk('app 可更新义项图片', app, `UPDATE word_senses SET image_asset_id=1 WHERE id='en.pear.fruit'`);
-await expectOk('建课程与草稿', app, `INSERT INTO courses (id,subject,grade,sort_order,template_id,created_by_admin_id) VALUES ('en-g1-u01','english',1,101,'word-quest',1),('en-g1-u02','english',1,102,'word-quest',1);
-  INSERT INTO course_drafts (id,course_id,template_id,template_version,document,created_by_admin_id) VALUES (1,'en-g1-u01','word-quest',1,'{}',1)`);
-await expectErr('UNIQUE：每门课同时只有一份未完成草稿', app, `INSERT INTO course_drafts (course_id,template_id,template_version,document,created_by_admin_id) VALUES ('en-g1-u01','word-quest',1,'{}',1)`, [], ['ER_DUP_ENTRY']);
+await expectOk('建课程（一册一门：一年级上册、下册）与草稿', app, `INSERT INTO courses (id,subject,grade,sort_order,template_id,created_by_admin_id) VALUES ('en-g1-a','english',1,101,'word-quest',1),('en-g1-b','english',1,102,'word-quest',1);
+  INSERT INTO course_drafts (id,course_id,template_id,template_version,document,created_by_admin_id) VALUES (1,'en-g1-a','word-quest',1,'{}',1)`);
+await expectErr('UNIQUE：每门课同时只有一份未完成草稿', app, `INSERT INTO course_drafts (course_id,template_id,template_version,document,created_by_admin_id) VALUES ('en-g1-a','word-quest',1,'{}',1)`, [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：未通过自动检查不能提交审核', app, `UPDATE course_drafts SET status='in_review', submitted_at=NOW(3) WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：发布前必须有审核人', app, `UPDATE course_drafts SET check_passed=1, status='publishing', submitted_at=NOW(3) WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectOk('发布：插入版本、关卡、题目（可见部分）与答案', app, `UPDATE course_drafts SET check_passed=1, status='publishing', submitted_at=NOW(3), reviewed_by_admin_id=1 WHERE id=1;
-  INSERT INTO course_versions (id,course_id,version_no,draft_id,template_id,template_version,title,published_by_admin_id) VALUES (1,'en-g1-u01',1,1,'word-quest',1,'Unit 1 Fruits',1);
-  INSERT INTO levels (id,course_version_id,level_key,seq,title,hiding_spots) VALUES (1,1,'l01',1,'认识水果','[{"kind":"leaf","x":0.2,"y":0.6},{"kind":"rock","x":0.5,"y":0.8},{"kind":"cloud","x":0.8,"y":0.2}]');
+const SPOTS = '[{"kind":"leaf","x":0.2,"y":0.6},{"kind":"rock","x":0.5,"y":0.8},{"kind":"cloud","x":0.8,"y":0.2}]';
+await expectOk('发布：插入版本、单元、关卡、题目（可见部分）与答案', app, `UPDATE course_drafts SET check_passed=1, status='publishing', submitted_at=NOW(3), reviewed_by_admin_id=1 WHERE id=1;
+  INSERT INTO course_versions (id,course_id,version_no,draft_id,template_id,template_version,title,published_by_admin_id) VALUES (1,'en-g1-a',1,1,'word-quest',1,'一年级上册',1);
+  INSERT INTO units (id,course_version_id,unit_key,seq,title,title_zh) VALUES (1,1,'u01',1,'Unit 1 Fruits','水果'),(2,1,'u02',2,'Unit 2 Animals','动物');
+  INSERT INTO levels (id,course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (1,1,1,'l01',1,'认识水果','${SPOTS}');
   INSERT INTO questions (id,level_id,question_key,seq,type,scored,sense_id,visible) VALUES
     (1,1,'q1',1,'pick_image',1,'en.apple.fruit','{"imageAssetId":1,"options":[{"id":"o1","senseId":"en.apple.fruit"},{"id":"o2","senseId":"en.pear.fruit"}]}'),
     (2,1,'q2',2,'read_aloud',0,'en.apple.fruit','{"text":"I like apples."}');
   INSERT INTO question_answers (question_id,answer,explanation) VALUES (1,'{"optionId":"o1"}','apple 是苹果');
-  UPDATE courses SET current_version_id=1, version=version+1 WHERE id='en-g1-u01';
+  UPDATE courses SET current_version_id=1, version=version+1 WHERE id='en-g1-a';
   UPDATE course_drafts SET status='published', published_version_id=1 WHERE id=1`);
-await expectErr('CHECK：每关必须定义 3 个藏匿点', app, `INSERT INTO levels (course_version_id,level_key,seq,title,hiding_spots) VALUES (1,'l02',2,'x','[]')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectErr('复合外键：课程的当前版本必须属于本课程', app, `UPDATE courses SET current_version_id=1 WHERE id='en-g1-u02'`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('CHECK：每关必须定义 3 个藏匿点', app, `INSERT INTO levels (course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (1,1,'l02',2,'x','[]')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('复合外键：课程的当前版本必须属于本课程', app, `UPDATE courses SET current_version_id=1 WHERE id='en-g1-b'`, [], ['ER_NO_REFERENCED_ROW_2']);
+// 6b) 单元：课程 > 单元 > 关卡
+await expectErr('UNIQUE：同一课程版本内 unit_key 唯一', app, `INSERT INTO units (course_version_id,unit_key,seq,title) VALUES (1,'u01',3,'x')`, [], ['ER_DUP_ENTRY']);
+await expectErr('UNIQUE：同一课程版本内单元顺序唯一', app, `INSERT INTO units (course_version_id,unit_key,seq,title) VALUES (1,'u03',2,'x')`, [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：unit_key 格式', app, `INSERT INTO units (course_version_id,unit_key,seq,title) VALUES (1,'Unit 3',3,'x')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('外键：单元必须属于已发布版本', app, `INSERT INTO units (course_version_id,unit_key,seq,title) VALUES (99,'u01',1,'x')`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectOk('不同单元可以有相同的 level_key（u02 的 l01）', app, `INSERT INTO levels (id,course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (2,1,2,'l01',1,'认识动物','${SPOTS}')`);
+await expectErr('UNIQUE：单元内 level_key 唯一', app, `INSERT INTO levels (course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (1,1,'l01',2,'x','${SPOTS}')`, [], ['ER_DUP_ENTRY']);
+await expectErr('UNIQUE：单元内关卡顺序唯一', app, `INSERT INTO levels (course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (1,1,'l09',1,'x','${SPOTS}')`, [], ['ER_DUP_ENTRY']);
+await expectOk('发布另一门课程（一年级下册）的版本与单元', app, `INSERT INTO course_drafts (id,course_id,template_id,template_version,document,created_by_admin_id) VALUES (2,'en-g1-b','word-quest',1,'{}',1);
+  UPDATE course_drafts SET check_passed=1, status='publishing', submitted_at=NOW(3), reviewed_by_admin_id=1 WHERE id=2;
+  INSERT INTO course_versions (id,course_id,version_no,draft_id,template_id,template_version,title,published_by_admin_id) VALUES (2,'en-g1-b',1,2,'word-quest',1,'一年级下册',1);
+  INSERT INTO units (id,course_version_id,unit_key,seq,title) VALUES (3,2,'u01',1,'Unit 1 School');
+  UPDATE courses SET current_version_id=2 WHERE id='en-g1-b';
+  UPDATE course_drafts SET status='published', published_version_id=2 WHERE id=2`);
+await expectErr('复合外键：关卡的单元必须属于同一课程版本', app, `INSERT INTO levels (course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (1,3,'l05',5,'x','${SPOTS}')`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('不可变：app 不能修改已发布单元', app, `UPDATE units SET title='x' WHERE id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectErr('不可变：app 不能删除已发布单元', app, `DELETE FROM units WHERE id=2`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('CHECK：题目可见部分不得含答案字段', app, `INSERT INTO questions (level_id,question_key,seq,type,scored,visible) VALUES (1,'q3',3,'listen_choose',1,'{"options":[],"answer":"o1"}')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：read_aloud 不能计分', app, `INSERT INTO questions (level_id,question_key,seq,type,scored,visible) VALUES (1,'q4',4,'read_aloud',1,'{}')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 const [qcols] = await root.query(`SELECT column_name c FROM information_schema.columns WHERE table_schema='xingya' AND table_name='questions'`);
@@ -127,7 +146,7 @@ await expectErr('不可变：app 不能修改已发布题目', app, `UPDATE ques
 await expectErr('不可变：app 不能修改已发布答案', app, `UPDATE question_answers SET answer='{"optionId":"o2"}' WHERE question_id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('不可变：app 不能修改已发布关卡', app, `UPDATE levels SET title='x' WHERE id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('不可变：app 不能删除已发布版本', app, `DELETE FROM course_versions WHERE id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
-await expectErr('UNIQUE：同一草稿只能发布一次', app, `INSERT INTO course_versions (course_id,version_no,draft_id,template_id,template_version,title,published_by_admin_id) VALUES ('en-g1-u01',2,1,'word-quest',1,'x',1)`, [], ['ER_DUP_ENTRY']);
+await expectErr('UNIQUE：同一草稿只能发布一次', app, `INSERT INTO course_versions (course_id,version_no,draft_id,template_id,template_version,title,published_by_admin_id) VALUES ('en-g1-a',2,1,'word-quest',1,'x',1)`, [], ['ER_DUP_ENTRY']);
 
 // 7) 作答与闯关记录：生成列与幂等
 await expectOk('开始作答（play）', app, `INSERT INTO plays (id,family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items,expires_at) VALUES (1,1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR),(2,1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR),(3,1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR),(4,1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR)`, [uuid(1), uuid(2), uuid(3), uuid(4)]);
@@ -142,7 +161,15 @@ const [rows] = await app.query(`SELECT accuracy_pct, stars, passed FROM attempts
 ok('生成列：7/8=87%→1 星；3/4=75%→未通过；5/5→3 星', rows[1].stars === 1 && rows[2].passed === 0 && rows[2].stars === 0 && rows[3].stars === 3, JSON.stringify(rows.map(r => [r.accuracy_pct, r.stars, r.passed])));
 await expectErr('幂等：同一次作答只产生一条闯关记录', app, `INSERT INTO attempts (family_id,child_id,play_id,course_version_id,level_id,activity_date,scored_count,correct_count,stars_awarded,answers) VALUES (1,1,1,1,1,'2026-10-21',5,4,1,'[]')`, [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：每关计分题至少 4 道', app, `INSERT INTO attempts (family_id,child_id,play_id,course_version_id,level_id,activity_date,scored_count,correct_count,stars_awarded,answers) VALUES (1,1,2,1,1,'2026-10-21',3,3,0,'[]')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_DUP_ENTRY']);
-await expectErr('CHECK：通关进度星数与首次通过时间一致', app, `INSERT INTO level_progress (family_id,child_id,course_id,level_key,best_stars,last_attempt_at) VALUES (1,1,'en-g1-u01','l01',2,NOW())`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：关卡进度的最佳星级与首次通过时间一致', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,best_stars,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',2,NOW())`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('关卡进度按 (课程, unit_key, level_key)：u01/l01 与 u02/l01 各一行', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,best_stars,first_passed_at,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',3,NOW(3),NOW(3)),(1,1,'en-g1-a','u02','l01',1,NOW(3),NOW(3))`);
+await expectErr('UNIQUE：同一单元同一关卡只有一行进度', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',NOW())`, [], ['ER_DUP_ENTRY']);
+await expectOk('单元进度：u01 全部关卡通过且全 3 星级', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count,levels_passed,levels_three_star,first_completed_at,first_all_three_star_at) VALUES (1,1,'en-g1-a','u01',1,1,1,NOW(3),NOW(3))`);
+await expectErr('UNIQUE：同一孩子同一单元只有一行进度（首次全 3 星级只触发一次）', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count) VALUES (1,1,'en-g1-a','u01',4)`, [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：单元已通过关卡数不超过关卡数', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count,levels_passed) VALUES (1,1,'en-g1-a','u02',4,5)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：3 星级关卡数不超过已通过关卡数', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count,levels_passed,levels_three_star) VALUES (1,1,'en-g1-a','u02',4,1,2)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：单元全 3 星级必须先完成单元', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count,levels_passed,levels_three_star,first_all_three_star_at) VALUES (1,1,'en-g1-a','u02',1,1,1,NOW(3))`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('复合外键：单元进度的孩子必须属于同一家庭', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count) VALUES (2,1,'en-g1-a','u02',4)`, [], ['ER_NO_REFERENCED_ROW_2']);
 await expectErr('权限：app 不能 UPDATE 闯关记录', app, `UPDATE attempts SET correct_count=5`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 
 // 8) 复习（绑定义项）
@@ -169,12 +196,12 @@ await expectErr('权限：app 不能 UPDATE 账本', app, `UPDATE ledger SET del
 await expectErr('权限：app 不能 DELETE 账本', app, `DELETE FROM ledger WHERE child_id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 
 // 10) 账本：碎片（同一只追加账本的第二币种）
-await expectOk('碎片：通关 +3、复习 +2', app, `${led('fragment', 'level_pass', 3, 3, 'frag:level:en-g1-u01:l01:2026-10-21')}; ${led('fragment', 'review_day', 2, 5, 'review:2026-10-21')}`);
+await expectOk('碎片：通关 +3、复习 +2', app, `${led('fragment', 'level_pass', 3, 3, 'frag:level:en-g1-a:u01:l01:2026-10-21')}; ${led('fragment', 'review_day', 2, 5, 'review:2026-10-21')}`);
 await expectOk('同一 source_key 在不同币种下各记一次', app, led('star', 'review_day', 2, 43, 'review:2026-10-21'));
 await expectErr('幂等：碎片同一 source_key 只入账一次', app, led('fragment', 'review_day', 2, 7, 'review:2026-10-21'), [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：碎片不能用于购买装扮（币种与类型匹配）', app, led('fragment', 'purchase', -1, 4, 'purchase:hat-x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：碎片不能由家长奖励（无被动或人工来源）', app, led('fragment', 'parent_award', 5, 10, 'award:f', '1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectErr('CHECK：每个呀哈哈只给 1 片碎片', app, led('fragment', 'discovery', 2, 7, 'discovery:spot:9'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：每个呀哈哈家族成员只给 1 片碎片', app, led('fragment', 'discovery', 2, 7, 'discovery:spot:9'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：复习完成碎片固定 2 片', app, led('fragment', 'review_day', 3, 8, 'review:2026-10-20'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：碎片余额不可为负', app, led('fragment', 'pet_adopt', -40, -35, 'pet:adopt:1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('权限：app 不能 UPDATE 碎片流水', app, `UPDATE ledger SET delta=3 WHERE currency='fragment'`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
@@ -208,11 +235,11 @@ await expectErr('CHECK：档位星价 1–5000', app, `INSERT INTO pet_tiers (na
 await expectErr('CHECK：第 1 阶段从 1 级开始', app, `UPDATE pet_tier_stages SET min_level=3 WHERE tier_id=1 AND stage_no=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：上架的伙伴必须经过审核', app, `INSERT INTO pet_species (species_key,name,description,tier_id,status,design,created_by_admin_id,published_at) VALUES ('leafy','叶叶','x',1,'published','{}',1,NOW(3))`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await app.query(`INSERT INTO pet_species (id,species_key,name,description,tier_id,status,design,created_by_admin_id,reviewed_by_admin_id,published_at) VALUES (1,'leafy','叶叶','原创小叶精灵',1,'published','{}',1,1,NOW(3)),(2,'pebble','石石','原创小石头',1,'published','{}',1,1,NOW(3))`);
-await expectOk('用碎片领养伙伴（第一只自动成为学习陪伴）', app, `${led('fragment', 'pet_adopt', -5, 0, 'pet:adopt:leafy')};
+await expectOk('用碎片领养伙伴（第一只自动成为跟随伙伴）', app, `${led('fragment', 'pet_adopt', -5, 0, 'pet:adopt:leafy')};
   INSERT INTO child_pets (family_id,child_id,species_id,is_companion,adopted_with,price_paid,adopt_ledger_id) VALUES (1,1,1,1,'fragment',5,LAST_INSERT_ID())`);
 await expectOk('用星星领养第二只', app, `${led('star', 'pet_adopt', -10, 3, 'pet:adopt:pebble')};
   INSERT INTO child_pets (family_id,child_id,species_id,is_companion,adopted_with,price_paid,adopt_ledger_id) VALUES (1,1,2,0,'star',10,LAST_INSERT_ID())`);
-await expectErr('UNIQUE：每个孩子只有一只学习陪伴', app, `UPDATE child_pets SET is_companion=1 WHERE species_id=2`, [], ['ER_DUP_ENTRY']);
+await expectErr('UNIQUE：每个孩子只有一只跟随伙伴', app, `UPDATE child_pets SET is_companion=1 WHERE species_id=2`, [], ['ER_DUP_ENTRY']);
 await expectErr('UNIQUE：同种伙伴每人一只', app, `INSERT INTO child_pets (family_id,child_id,species_id,adopted_with,price_paid,adopt_ledger_id) SELECT 1,1,1,'star',10,MAX(id) FROM ledger`, [], ['ER_DUP_ENTRY']);
 await expectErr('权限：app 不能物理删除伙伴', app, `DELETE FROM child_pets WHERE child_id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('CHECK：营地扩建最多 10 格', app, `INSERT INTO pet_dens (child_id,family_id,extra_slots) VALUES (1,1,11)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
@@ -222,12 +249,12 @@ await app.query(`INSERT INTO yahaha_sets (id,name,sort_order,status) VALUES (1,'
   INSERT INTO yahaha_styles (id,style_key,name,set_id,rarity,total_stock,status,design,created_by_admin_id,reviewed_by_admin_id,published_at) VALUES (1,'leaf-hat','叶帽呀哈哈',1,'common',NULL,'published','{}',1,1,NOW(3)),(2,'gold-leaf','金叶呀哈哈',1,'legendary',2,'published','{}',1,1,NOW(3))`);
 await expectErr('CHECK：放置数量不得超过全站库存', app, `UPDATE yahaha_styles SET placed_total=3 WHERE id=2`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 const spot = (att, no, style, seq, date = '2026-10-21') => `INSERT INTO hiding_spots (family_id,child_id,attempt_id,spot_no,spot_kind,local_date,style_id,daily_seq) VALUES (1,1,${att},${no},'leaf','${date}',${style},${seq})`;
-await expectOk('通关打开 3 个藏匿点（1 个有呀哈哈）', app, `${spot(1, 1, 1, 1)}; ${spot(1, 2, 'NULL', 'NULL')}; ${spot(1, 3, 'NULL', 'NULL')}`);
+await expectOk('通关打开 3 个藏匿点（1 个有呀哈哈家族成员）', app, `${spot(1, 1, 1, 1)}; ${spot(1, 2, 'NULL', 'NULL')}; ${spot(1, 3, 'NULL', 'NULL')}`);
 await expectErr('UNIQUE：同一次通关同一藏匿点只记一次', app, spot(1, 1, 'NULL', 'NULL'), [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：每次通关最多 3 个藏匿点', app, spot(1, 4, 'NULL', 'NULL'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('UNIQUE：当天放置序号不可重复（并发放置不会超额）', app, spot(2, 1, 1, 1), [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：每孩子每天放置上限不超过 10', app, spot(2, 1, 1, 11), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectErr('CHECK：有呀哈哈的藏匿点必须占用当天序号', app, spot(2, 1, 1, 'NULL'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：有呀哈哈家族成员的藏匿点必须占用当天序号', app, spot(2, 1, 1, 'NULL'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('权限：app 不能改藏匿点内容（列级授权）', app, `UPDATE hiding_spots SET style_id=2 WHERE attempt_id=1 AND spot_no=2`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
 const [r1] = await app.query(`UPDATE hiding_spots SET revealed_at=NOW(3) WHERE attempt_id=1 AND spot_no=1 AND child_id=1 AND revealed_at IS NULL`);
 const [r2] = await app.query(`UPDATE hiding_spots SET revealed_at=NOW(3) WHERE attempt_id=1 AND spot_no=1 AND child_id=1 AND revealed_at IS NULL`);
@@ -247,7 +274,15 @@ await expectErr('CHECK：概率不得高于 100%', app, rule({ p: 101 }), [], ['
 await expectErr('CHECK：每孩子每日上限不得超过 10', app, rule({ cap: 11 }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：限时活动必须有结束时间', app, rule({ end: 'NULL' }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：课程设定规则必须绑定课程', app, rule({ t: 'course', trig: 'streak_days', eff: 'guaranteed', p: 'NULL' }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectOk('合法的课程设定规则（单元首次全三星必得）', app, rule({ t: 'course', trig: 'unit_first_all_three_star', eff: 'guaranteed', p: 'NULL', spec: '{"scope":{"courseIds":["en-g1-u01"]}}', end: 'NULL' }));
+const tgt = (t) => `{"scope":{"targets":${JSON.stringify(t)}}}`;
+await expectOk('合法的课程设定规则（指向课程：单元首次全 3 星级必得）', app, rule({ t: 'course', trig: 'unit_first_all_three_star', eff: 'guaranteed', p: 'NULL', spec: tgt([{ courseId: 'en-g1-a' }]), end: 'NULL' }));
+await expectOk('合法的课程设定规则（指向单元 u03：单元首次全 3 星级必得）', app, rule({ t: 'course', trig: 'unit_first_all_three_star', eff: 'guaranteed', p: 'NULL', spec: tgt([{ courseId: 'en-g1-a', unitKey: 'u03' }]), end: 'NULL' }));
+await expectOk('合法的课程设定规则（指向关卡：指定关卡通关提高概率）', app, rule({ t: 'course', trig: 'specific_level_pass', p: 60, spec: tgt([{ courseId: 'en-g1-a', unitKey: 'u03', levelKey: 'l02' }]), end: 'NULL' }));
+await expectErr('CHECK：范围中有关卡必须同时有单元', app, rule({ t: 'course', trig: 'level_pass', p: 60, spec: tgt([{ courseId: 'en-g1-a', levelKey: 'l02' }]), end: 'NULL' }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：范围目标不允许未知字段', app, rule({ t: 'course', trig: 'level_pass', p: 60, spec: tgt([{ courseId: 'en-g1-a', grade: 1 }]), end: 'NULL' }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：课程 ID 格式（范围目标）', app, rule({ t: 'course', trig: 'level_pass', p: 60, spec: tgt([{ courseId: 'EN G1' }]), end: 'NULL' }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：单元首次全 3 星级不能指向关卡', app, rule({ t: 'course', trig: 'unit_first_all_three_star', eff: 'guaranteed', p: 'NULL', spec: tgt([{ courseId: 'en-g1-a', unitKey: 'u03', levelKey: 'l01' }]), end: 'NULL' }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：指定关卡通关的每个目标都必须是关卡', app, rule({ t: 'course', trig: 'specific_level_pass', p: 60, spec: tgt([{ courseId: 'en-g1-a', unitKey: 'u03', levelKey: 'l01' }, { courseId: 'en-g1-a', unitKey: 'u04' }]), end: 'NULL' }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：限定款式必须列出款式', app, rule({ eff: 'restrict_styles', p: 'NULL' }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：已消耗数量不得超过总量', app, rule({ total: 5, used: 6 }), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 
@@ -286,6 +321,9 @@ await expectOk('app 可切换 AI 总开关', app, `UPDATE system_settings SET va
 await expectErr('CHECK：全局每日上限 1–10', app, `UPDATE system_settings SET value=CAST('11' AS JSON) WHERE setting_key='discovery.daily_cap'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：全局藏匿点概率 1–100', app, `UPDATE system_settings SET value=CAST('0' AS JSON) WHERE setting_key='discovery.spot_probability_pct'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：作答有效期 30–720 分钟', app, `UPDATE system_settings SET value=CAST('5' AS JSON) WHERE setting_key='learning.play_ttl_minutes'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：单元关卡数范围 min ≤ max（默认 3–6）', app, `UPDATE system_settings SET value=CAST('{"min":6,"max":3}' AS JSON) WHERE setting_key='content.unit_levels'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：单元关卡数上限不超过 12', app, `UPDATE system_settings SET value=CAST('{"min":3,"max":20}' AS JSON) WHERE setting_key='content.unit_levels'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('app 可把单元关卡数调整为 4–8', app, `UPDATE system_settings SET value=CAST('{"min":4,"max":8}' AS JSON), version=version+1 WHERE setting_key='content.unit_levels'`);
 await expectErr('CHECK：系统设置键白名单（migrator 也不能写入未知键）', mig, `INSERT INTO system_settings (setting_key,value) VALUES ('evil.key','1')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('app 可把全局概率改为 25%', app, `UPDATE system_settings SET value=CAST('25' AS JSON), version=version+1 WHERE setting_key='discovery.spot_probability_pct'`);
 await expectErr('CHECK：周报去重键', app, `INSERT INTO email_outbox (kind,dedupe_key,to_email,subject,body_html) VALUES ('weekly_report','weekly:1:2026-W43','a@x.com','s','b'),('weekly_report','weekly:1:2026-W43','a@x.com','s','b')`, [], ['ER_DUP_ENTRY']);

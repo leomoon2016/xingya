@@ -10,7 +10,7 @@
 
 pet_tiers, pet_tier_stages, pet_species, pet_dens, child_pets
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。
 
 ## 边界
 

@@ -32,6 +32,7 @@ GRANT SELECT, INSERT ON xingya.gifts            TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.audit_events     TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.yahaha_finds     TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.course_versions  TO 'xingya_app_role';
+GRANT SELECT, INSERT ON xingya.units            TO 'xingya_app_role';   -- 单元随课程版本只追加
 GRANT SELECT, INSERT ON xingya.levels           TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.questions        TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.question_answers TO 'xingya_app_role';
@@ -53,6 +54,7 @@ GRANT SELECT, INSERT, UPDATE ON xingya.family_devices     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.courses            TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.course_drafts      TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.level_progress     TO 'xingya_app_role';
+GRANT SELECT, INSERT, UPDATE ON xingya.unit_progress      TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.review_items       TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.balances           TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.shop_items         TO 'xingya_app_role';

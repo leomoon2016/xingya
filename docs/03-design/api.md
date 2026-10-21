@@ -2,6 +2,7 @@
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../README.md)）。
 > 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）：作答改为 plays；新增 companion、discovery、admin/studio 端点与相应错误码；去掉课程包接口。
+> 2026-10-21 单元层（[ADR 0016](../adr/0016-unit-layer.md)）：路线图与进度按单元返回；草稿增加单元增删排序接口；AI 生成可只生成一个单元；投放规则范围可指向课程/单元/关卡。
 
 
 ## 5. API 概要
@@ -34,7 +35,7 @@
 | 401 | `UNAUTHENTICATED` | 未登录或会话失效 |
 | 401 | `INVALID_CREDENTIALS` | 邮箱/密码/PIN/TOTP 错误（不区分哪一项） |
 | 403 | `FORBIDDEN` | 主体类型无权调用（如孩子调家长接口） |
-| 403 | `COURSE_NOT_OPEN` / `LEVEL_LOCKED` | 课程未开放 / 关卡未解锁 |
+| 403 | `COURSE_NOT_OPEN` / `LEVEL_LOCKED` | 课程未开放 / 关卡未解锁（含所在单元尚未解锁） |
 | 403 | `TIME_LIMIT_REACHED` / `OUTSIDE_ALLOWED_HOURS` | 时长用完 / 不在允许时段（`details.availableAt`） |
 | 403 | `CROSS_FAMILY_DISABLED` / `NOT_FRIENDS` / `BLOCKED` | 跨家庭互动前提不满足 |
 | 403 | `CHAT_DISABLED_FOR_CHILD` | 家长关闭了该孩子的呀哈哈队长 |
@@ -95,15 +96,15 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | 方法 路径 | 主体 | 说明 |
 | --- | --- | --- |
 | GET /assets/config | 公开 | 素材 CDN 前缀（Service Worker 用） |
-| GET /courses | K | 已开放课程及进度摘要 |
-| GET /courses/:courseId/map | K | 关卡路线图（锁定/可玩/已通过/星级，按当前版本；含“今天还能找 N 个”） |
+| GET /courses | K | 已开放课程（一册一门）及进度摘要（已完成单元数 / 单元数、已通过关卡数） |
+| GET /courses/:courseId/map | K | 课程路线图（按当前版本）：`units[{unitKey, title, state: locked\|open\|completed, levelsPassed, levelCount, levels[{levelId, levelKey, state: locked\|open\|passed, bestStars}]}]`；含“今天还能找 N 个” |
 | POST /levels/:levelId/plays | K | 开始闯关作答：只返回题目可见部分（选项已打乱、选项与词块 ID 已换成本次作答的随机令牌）与素材 CDN 地址，不含答案 |
 | POST /plays/:playId/answers | K | 提交一题 `{questionId, response}` → `{correct, correctOptionId/answer, explanation}`；每题只记第一次 |
 | POST /plays/:playId/finish | K | 完成：结算星星、碎片、伙伴经验、复习入队，返回 3 个藏匿点（只有编号与位置）；幂等 |
 | GET /review/summary | K | 今日到期、已复习、剩余额度、是否完成 |
 | POST /review/plays | K | 开始复习作答（≤ 剩余额度）；作答与完成用上面两个 `/plays/:playId/*` 端点 |
 | GET /me/streak | K | 连续天数 |
-| GET /children/:id/progress | P | 孩子各课程进度 |
+| GET /children/:id/progress | P | 孩子各课程、各单元进度（已通过关卡数 / 关卡数、3 星级关卡数、完成日期、全 3 星级日期） |
 
 **stars**
 
@@ -190,14 +191,16 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | --- | --- |
 | GET /admin/studio/jobs · GET /admin/studio/jobs/:id · POST /admin/studio/jobs/:id/cancel | 任务列表、详情、取消排队中任务 |
 | GET · PUT /admin/studio/budget/:month | 本月上限、预留、已花费（乐观锁） |
-| POST /admin/studio/estimate | 预估费用 `{kind, params}` |
+| POST /admin/studio/estimate | 预估费用 `{kind, params}`；课程生成返回按单元的明细 `{fen, breakdown, units[{unitKey, fen}]}` |
 | GET /admin/studio/assets · GET /admin/studio/assets/:id/url | 素材库、10 分钟签名 URL |
 | POST /admin/studio/materials · POST /admin/studio/materials/:id/extract | 申请直传 OSS 的上传地址 / 抽取文本或 OCR |
 | GET · POST /admin/studio/words · POST /admin/studio/senses/:id/retire · PUT /admin/studio/words/:id/audio · PUT /admin/studio/senses/:id/image | 词库 |
 | GET · POST /admin/studio/courses · POST /admin/studio/courses/:id/drafts | 课程列表、建课程、基于当前版本开草稿 |
 | GET · PATCH /admin/studio/drafts/:id | 草稿（表单数据 + 检查结果，乐观锁） |
-| POST /admin/studio/drafts/:id/analyze · /generate · /questions/:key/rewrite | AI 分析资料 / 按模板生成 / 重写一题（= 课程设计师的角色任务，返回 `runId`） |
-| GET /admin/studio/drafts/:id/preview/:levelKey | 孩子视角试玩（不记录） |
+| POST /admin/studio/drafts/:id/units · PATCH · DELETE /admin/studio/drafts/:id/units/:unitKey · PUT /admin/studio/drafts/:id/units/order | 草稿内单元：新增（位置、`unitKey`、标题）/ 改标题与封面 / 删除（已发布过的需确认）/ 调整顺序（均带草稿 `version`） |
+| POST /admin/studio/drafts/:id/analyze · /generate | AI 分析资料 / 按模板生成，请求体 `{scope: "course"\|"unit", unitKey?, position?, materialIds[]}`：`course` = 整门课程（先确认单元列表，按单元逐个生成），`unit` = 生成一个单元加入本草稿（= 课程设计师的角色任务，返回 `runId`；先返回按单元的预估费用） |
+| POST /admin/studio/drafts/:id/units/:unitKey/levels/:levelKey/questions/:questionKey/rewrite | 让 AI 重写一题（返回 `runId`） |
+| GET /admin/studio/drafts/:id/preview/:unitKey/:levelKey | 孩子视角试玩（不记录） |
 | POST /admin/studio/drafts/:id/submit · /return · /publish | 提交审核 / 退回 / 发布（入队 publish_audio） |
 | GET /admin/studio/courses/:id/versions | 版本历史 |
 | GET /admin/studio/templates | 模板列表（只读，来自仓库） |

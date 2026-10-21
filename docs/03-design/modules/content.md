@@ -2,22 +2,23 @@
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../../README.md)）。
 > 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../../06-releases/v1.0/changes.md)）：从“内存中的只读课程包”改为数据库中的版本化课程 + 共享词库 + 草稿生命周期（[ADR 0008](../../adr/0008-db-versioned-courses-word-bank.md)）。
+> 2026-10-21 单元层（[ADR 0016](../../adr/0016-unit-layer.md)）：课程（一册）> 单元 > 关卡；版本仍以整门课程为单位，发布时写入全部单元。
 
 ## 职责
 
-共享词库；课程、草稿、不可变版本；表单编辑、自动检查（K1–K12）、孩子视角试玩、审核、发布；题型判分器；模板注册（读取仓库 `seeds/course-templates/`）；内存中的头像、短语/表情、安全词表。
+共享词库；课程、草稿、不可变版本；表单编辑（含单元增删与排序）、自动检查（K1–K13）、孩子视角试玩、审核、发布；题型判分器；模板注册（读取仓库 `seeds/course-templates/`）；内存中的头像、短语/表情、安全词表。
 
 ## 拥有的表
 
-words, word_senses, courses, course_versions, course_drafts, levels, questions, question_answers
+words, word_senses, courses, course_versions, course_drafts, units, levels, questions, question_answers
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)；文档结构、题型两部分、K 规则与发布流程见 [课程模型](../course-model.md)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)；文档结构、题型两部分、K 规则与发布流程见 [课程模型](../course-model.md)。
 
 ## 边界
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md#34-模块与边界规则) 边界规则）；`repo.ts` 只访问上面列出的表。
 - 计划文件：`apps/api/src/modules/content/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`；单元测试在 `apps/api/test/unit/content/`。
-- 依赖：studio（生成与发布任务、素材）、family（系统管理员）。AI 流程由 AI 角色执行（课程设计师的技能 `course-analyze`、`course-generate`、`question-rewrite`；美术设计师 `course-illustration`；配音师 `course-voice`；质检员 `content-qa`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`materials.read`、`words.search`、`templates.read`、`courses.list`、`course.read_draft`、`course.write_draft`（只写草稿，每次写入都跑 K 规则）、`course.rewrite_question`、`course.attach_images`、`course.assign_voices`（写对话声音分配并生成试听音频）、`course.run_checks`；以及系统任务处理器 `publish_audio`（发布，确定性，复用试听音频的哈希）。**没有发布类工具**。
+- 依赖：studio（生成与发布任务、素材）、family（系统管理员）。AI 流程由 AI 角色执行（课程设计师的技能 `course-analyze`、`course-generate`、`question-rewrite`；美术设计师 `course-illustration`；配音师 `course-voice`；质检员 `content-qa`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`materials.read`、`words.search`、`templates.read`、`courses.list`、`course.read_draft`、`course.write_draft`（只写草稿，每次写入都跑 K 规则；参数 `scope = course | unit`：整门课程，或只写入/替换一个单元，其他单元不动）、`course.rewrite_question`、`course.attach_images`、`course.assign_voices`（写对话声音分配并生成试听音频）、`course.run_checks`；以及系统任务处理器 `publish_audio`（发布，确定性，复用试听音频的哈希）。**没有发布类工具**。
 
 ## 接口
 
@@ -27,8 +28,9 @@ words, word_senses, courses, course_versions, course_drafts, levels, questions, 
 // 孩子端读取（只读已发布版本）
 currentVersion(courseId): CourseVersion | null
 listCourses(filter: {subject?, grade?}): CourseSummary[]          // 只含有当前版本且未退役的课程
-getLevel(versionId, levelId): LevelVisible                          // 关卡 + 题目可见部分（不含答案）
-levelSequence(versionId): {levelId, levelKey, seq}[]
+getLevel(versionId, levelId): LevelVisible & {unitKey}             // 关卡 + 题目可见部分（不含答案）
+courseOutline(versionId): {unitId, unitKey, seq, title, levels: {levelId, levelKey, seq}[]}[]   // 单元按 seq、单元内关卡按 seq
+unitLevelKeys(versionId, unitKey): LevelKey[]                       // 当前版本某单元的全部关卡（单元进度用）
 gradeInTx(tx, questionId, response): {correct, reveal: {answer, explanation}}  // 读 question_answers 判分
 levelSenses(levelId): SenseId[]                                     // 该关考查的义项
 pickDistractorSenses(senseId, n, seed): SenseId[]                  // 复习生成题：同学科同年级已发布义项，确定性
@@ -37,11 +39,14 @@ spotDefinitions(levelId): {kind, x, y}[]                          // 3 个藏匿
 getSense(id) / searchWords(q) / createDraftWordInTx(tx, …) / retireSense(admin, id)
 setWordAudio(admin, wordId, assetId) / setSenseImage(admin, senseId, assetId)
 // 后台课程
-createCourse(admin, {id, subject, grade, sortOrder, templateId})
+createCourse(admin, {id, subject, grade, sortOrder, templateId})   // id 如 en-g1-a（一年级上册）
 openDraft(admin, courseId, {fromVersionId?}): Draft              // 每门课最多一份未完成草稿
 updateDraft(admin, draftId, patch & {version}): {draft, checkReport}  // 每次保存都跑 K 规则
-requestAiRewrite(admin, draftId, questionKey, hint?): RunId        // = studio.startTask(课程设计师, question-rewrite)
-previewLevel(admin, draftId, levelKey): LevelVisible               // 孩子视角试玩（不记录）
+addUnit(admin, draftId, {unitKey, title, position} & {version}) / updateUnit(…) / removeUnit(admin, draftId, unitKey, {confirmPublished?} & {version})
+reorderUnits(admin, draftId, unitKeys[] & {version})
+requestAiGenerate(admin, draftId, {scope: 'course' | 'unit', unitKey?, position?, materialIds}): {runId, estimate: {fen, units[{unitKey, fen}]}}   // = studio.startTask(课程设计师, course-generate)
+requestAiRewrite(admin, draftId, {unitKey, levelKey, questionKey}, hint?): RunId        // = studio.startTask(课程设计师, question-rewrite)
+previewLevel(admin, draftId, unitKey, levelKey): LevelVisible               // 孩子视角试玩（不记录）
 submitForReview(admin, draftId, version) / returnToDraft(admin, draftId, reason)
 publish(admin, draftId, version): JobId                            // 入队 publish_audio
 importSample(file): DraftId                                        // xingya course:import
@@ -74,7 +79,7 @@ sequenceDiagram
     CO->>DB: INSERT assets(audio, public)
   end
   CO->>OSS: 复制草稿图片到 pub/；UPDATE assets SET visibility='public'
-  CO->>DB: BEGIN；courses FOR UPDATE；INSERT course_versions/levels/questions/question_answers
+  CO->>DB: BEGIN；courses FOR UPDATE；INSERT course_versions/units/levels/questions/question_answers（全部单元）
   CO->>DB: 候选词与义项 → active；UPDATE courses.current_version_id；草稿 → published；审计；COMMIT
   W->>DB: 任务 succeeded，释放槽位
 ```

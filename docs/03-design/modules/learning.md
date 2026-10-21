@@ -2,16 +2,17 @@
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../../README.md)）。
 > 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../../06-releases/v1.0/changes.md)）：整批提交改为作答（plays）三步：开始（只下发可见部分）→ 逐题作答（服务端判分反馈）→ 完成（一次结算，含碎片、伙伴经验、藏匿点）。
+> 2026-10-21 单元层（[ADR 0016](../../adr/0016-unit-layer.md)）：路线图按单元分组；单元在课程内、关卡在单元内顺序解锁；进度键改为 `(course_id, unit_key, level_key)`；新增 `unit_progress`。
 
 ## 职责
 
-关卡路线与解锁、作答、最佳星级、义项与错题的间隔复习、连续学习天数。
+课程路线图（单元 > 关卡）与解锁、单元进度、作答、最佳星级、义项与错题的间隔复习、连续学习天数。
 
 ## 拥有的表
 
-plays, level_progress, attempts, review_items, review_sessions
+plays, level_progress, unit_progress, attempts, review_items, review_sessions
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。
 
 ## 边界
 
@@ -24,20 +25,23 @@ plays, level_progress, attempts, review_items, review_sessions
 以 TypeScript 签名表示（省略 `Promise<>`；`P` = 已鉴权主体 Principal；`Tx` = Kysely 事务）。
 
 ```ts
-getCourseMap(child, courseId): {levels: LevelState[], yahahaLeftToday}   // locked | open | passed(stars)；按 level_key
+getCourseMap(child, courseId): {units: UnitState[], yahahaLeftToday}   // 单元 locked | open | completed，含 levels: LevelState[]（locked | open | passed(stars)）；按 (unit_key, level_key)
 startLevelPlay(child, levelId, requestId): PlayView                         // 可见题目、打乱后的选项、素材 CDN 地址
 startReviewPlay(child, requestId): PlayView                                 // ≤ 20 − 今日已复习
 answer(child, playId, {questionRef, response}): {correct?, reveal?}      // 每题只记第一次
 finish(child, playId): AttemptResult | ReviewResult                         // 幂等：重复返回第一次的结果
 getReviewSummary(child): {dueToday, doneToday, remainingToday, completedToday}
 getStreak(child): {current, longest, todayCounts}
-statsForDay(familyId, childId, date): LearningDayStats                      // 供 reports 聚合
+statsForDay(familyId, childId, date): LearningDayStats                      // 供 reports 聚合（含首次完成单元数）
+unitProgress(familyId, childId): UnitProgressView[]                         // 供家长中心与周报：各课程各单元进度
 expirePlays(now) / purgeExpiredPlays(now)                                   // 调度任务
 ```
 
 - `plays.items` 记录本次下发的题目 ID（或复习生成题的义项与选项）以及每题的选项顺序；`plays.responses` 按题记录第一次作答与对错。`answer` 在 `plays` 行锁内检查“该题已有作答则直接返回已记录结果”。
 - 有效期：`expires_at = started_at + learning.play_ttl_minutes`（默认 120）。
 - 完成要求全部题目已作答（`409 PLAY_INCOMPLETE`）。
+- **解锁**（按当前版本 `courseOutline`）：第 1 单元第 1 关始终可玩；单元内第 k 关在第 k−1 关已通过后解锁；第 N+1 单元在第 N 单元已完成（`unit_progress.first_completed_at` 非空）后解锁。`first_completed_at` 一旦写入不再清除，所以新版本给已完成单元加关卡时，后面的单元不会重新锁上（新增关卡在本单元内照常按顺序解锁）。
+- **单元进度**：每次通过后在同一事务内按当前版本该单元的关卡列表重算 `level_count`、`levels_passed`、`levels_three_star`；`levels_passed = level_count` 且 `first_completed_at` 为空 → 写入（返回 `unitCompleted`）；`levels_three_star = level_count` 且 `first_all_three_star_at` 为空 → 写入，并把 `trigger.unitFirstAllThreeStar = true` 传给 discovery（只触发一次）。
 
 ## 时序：开始 → 作答 → 完成
 
@@ -56,7 +60,7 @@ sequenceDiagram
   C->>API: POST /levels/:levelId/plays（X-Client-Request-Id: R）
   API->>CT: checkAccess(child, 'start')
   API->>L: startLevelPlay
-  L->>CT: isCourseOpen；L 检查解锁（按 level_key）
+  L->>CT: isCourseOpen；L 检查解锁（所在单元已解锁且单元内前一关已通过）
   L->>CO: getLevel(当前版本) → 可见部分
   L->>L: crypto 打乱每题选项顺序，并把选项/词块 ID 换成本次作答的随机令牌（映射存 items）
   L->>DB: INSERT plays(version, level, items, expires_at)（R 唯一，重放返回同一作答）
@@ -78,20 +82,21 @@ sequenceDiagram
   API->>DB: BEGIN；INSERT idempotency(R2)
   API->>L: finishInTx
   L->>S: lockBalancesInTx(child: star → fragment)（锁顺序 ②，见 nfr §4.5.2）
-  L->>DB: plays FOR UPDATE（全部已答、未过期）；SELECT level_progress … FOR UPDATE
+  L->>DB: plays FOR UPDATE（全部已答、未过期）；SELECT level_progress、unit_progress … FOR UPDATE
   L->>DB: INSERT attempts（生成列复核星级；play_id 唯一）
-  L->>DB: UPSERT level_progress；复习入队（义项 / 无义项的错题）
+  L->>DB: UPSERT level_progress(course, unit_key, level_key)；复习入队（义项 / 无义项的错题）
+  L->>DB: UPSERT unit_progress（重算计数；首次完成 / 首次全 3 星级时间只写一次）
   opt awarded > 0
     L->>S: creditInTx(star, level_pass, awarded, attempt:{id})
     L->>CP: addXpInTx(child, awarded)
   end
   opt passed
-    L->>S: creditInTx(fragment, level_pass, stars, frag:level:{course}:{levelKey}:{date})（已存在则跳过）
-    L->>D: placeSpotsInTx(attempt) → 3 个 hiding_spots
+    L->>S: creditInTx(fragment, level_pass, stars, frag:level:{course}:{unitKey}:{levelKey}:{date})（已存在则跳过）
+    L->>D: placeSpotsInTx(attempt, unitKey, levelKey, trigger) → 3 个 hiding_spots
   end
   L->>L: 连续天数；里程碑 → S.creditInTx(star, streak) + CP.addXpInTx
   L->>DB: plays → finished；写幂等响应；COMMIT
-  API-->>C: {accuracy, stars, passed, awarded, fragments, xp, spots[3](只有编号与位置), nextLevelUnlocked, streak}
+  API-->>C: {accuracy, stars, passed, awarded, fragments, xp, spots[3](只有编号与位置), nextLevelUnlocked, unitCompleted, nextUnitUnlocked, streak}
 ```
 
 复习作答相同：`POST /review/plays` 开始，同样的 `answers` 与 `finish`；完成时写 `review_sessions`（`play_id` 唯一）、更新盒与到期日；“今日完成”时发 `star review_day 2` 与 `fragment review_day 2` 并 `addXpInTx(2)`。

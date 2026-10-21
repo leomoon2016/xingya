@@ -1,7 +1,7 @@
 # 方案总览
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../README.md)）。
-> 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）：课程入库并版本化、素材在 OSS + CDN、发布时一次性运行 Piper、新增 companion / discovery / studio 三个模块（共 11 个业务模块）。第 10 部分（用户已批准）：studio 增加 Skill 版本库、AI 角色、角色执行器与多角色流水线（+10 张表，共 65 张）。
+> 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）：课程入库并版本化、素材在 OSS + CDN、发布时一次性运行 Piper、新增 companion / discovery / studio 三个模块（共 11 个业务模块）。第 10 部分（用户已批准）：studio 增加 Skill 版本库、AI 角色、角色执行器与多角色流水线（+10 张表，共 65 张）。单元层（用户 2026-10-21 决定，[ADR 0016](../adr/0016-unit-layer.md)）：课程 = 一册，课程 > 单元 > 关卡，+2 张表，共 67 张。
 
 
 ## 3.1 部署拓扑
@@ -380,14 +380,14 @@ xingya/
 保留最近 3 个发布目录。
 
 ## 3.4 模块与边界规则
-11 个业务模块 + 平台层，各自拥有自己的表（共 65 张 = 62 业务 + 3 平台），只通过 `index.ts` 暴露函数：
+11 个业务模块 + 平台层，各自拥有自己的表（共 67 张 = 64 业务 + 3 平台），只通过 `index.ts` 暴露函数：
 
 | 模块 | 代码名 | 拥有的表 | 表数 |
 | --- | --- | --- | --- |
 | 家庭账号 | family | families, parents, children, admin_accounts, family_devices, sessions, auth_tokens, audit_events | 8 |
 | AI 工作室（含 Skill 与 AI 角色） | studio | ai_jobs, ai_budget_months, assets, materials；skills, skill_versions, skill_allowed_agents, agents, agent_versions, agent_skills, agent_budget_months, agent_runs, agent_run_steps, quick_tasks | 14 |
-| 课程内容 | content | words, word_senses, courses, course_versions, course_drafts, levels, questions, question_answers；内存中的模板、头像、短语/表情、安全词表 | 8 |
-| 学习 | learning | plays, level_progress, attempts, review_items, review_sessions | 5 |
+| 课程内容 | content | words, word_senses, courses, course_versions, course_drafts, units, levels, questions, question_answers；内存中的模板、头像、短语/表情、安全词表 | 9 |
+| 学习 | learning | plays, level_progress, unit_progress, attempts, review_items, review_sessions | 6 |
 | 星星 | stars | ledger, balances, shop_items, child_items, reward_options, redemptions | 6 |
 | 伙伴 | companion | pet_tiers, pet_tier_stages, pet_species, pet_dens, child_pets | 5 |
 | 呀哈哈发现 | discovery | yahaha_sets, yahaha_styles, drop_rules, hiding_spots, yahaha_finds | 5 |

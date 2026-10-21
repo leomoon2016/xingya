@@ -1,13 +1,13 @@
 # 数据模型
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../README.md)）。
-> 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）：`0001_init.sql` 尚未部署到任何环境，因此**直接修订**（不追加 0002），由 36 张表变为 55 张；第 10 部分（Skill 管理与 AI 角色，用户已批准）再增加 10 张，共 65 张。
+> 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）：`0001_init.sql` 尚未部署到任何环境，因此**直接修订**（不追加 0002），由 36 张表变为 55 张；第 10 部分（Skill 管理与 AI 角色，用户已批准）再增加 10 张，共 65 张；2026-10-21 用户决定保留**单元**层（[ADR 0016](../adr/0016-unit-layer.md)），再增加 `units`、`unit_progress` 2 张，共 67 张。
 
 ## 6. 数据模型
 
-完整 DDL 见 `db/migrations/0001_init.sql`（表）与 `db/roles.sql`（角色与授权）。共 65 张表（业务 62 + 平台 3）；145 个外键、172 个 CHECK、68 个非主键唯一键、12 个生成列。全部 InnoDB / utf8mb4；时间 UTC；外键一律 RESTRICT；孩子与家长只停用/归档不硬删。
+完整 DDL 见 `db/migrations/0001_init.sql`（表）与 `db/roles.sql`（角色与授权）。共 67 张表（业务 64 + 平台 3）；149 个外键、180 个 CHECK、71 个非主键唯一键、12 个生成列。全部 InnoDB / utf8mb4；时间 UTC；外键一律 RESTRICT；孩子与家长只停用/归档不硬删。
 
-### 6.1 表清单（65 张）
+### 6.1 表清单（67 张）
 | 模块 | 表 | 用途 | 关键列 / 约束 |
 | --- | --- | --- | --- |
 | family（8） | families | 家庭（租户根） | time_zone、cross_family_enabled（默认 0）、friend_code（唯一，开启时必填）、status、version |
@@ -32,16 +32,18 @@
 | | quick_tasks | 快捷任务 | `UNIQUE(page, name)`、target agent/pipeline 与 agent_id/plan（2–6 步）形状 CHECK、只限管理端角色（role_audience = admin + 复合外键） |
 | | agent_runs | 管理端 AI 运行 | kind task/pipeline/pipeline_step/test 形状 CHECK、角色版本复合外键、`role_audience = 'admin'`（孩子对话不进入）、`UNIQUE(parent_run_id, step_no)`、`UNIQUE(job_id)`、step_count ≤ 20、实际 ≤ 预估、finished_at 与终态一致、克隆与快捷任务来源 |
 | | agent_run_steps | 运行步骤（180 天） | `UNIQUE(run_id, step_no)`、step_no 1–20、kind route/llm/tool/validate/guard、tool 步必须有 tool_name、模型步必须有 model、status ok/error/blocked/timeout、cost_fen、latency_ms |
-| content（8） | words | 共享词库：词 | 稳定 id（`en.apple`，正则）、`UNIQUE(subject,text)`（区分大小写）、audio_asset_id、status draft/active/retired |
+| content（9） | words | 共享词库：词 | 稳定 id（`en.apple`，正则）、`UNIQUE(subject,text)`（区分大小写）、audio_asset_id、status draft/active/retired |
 | | word_senses | 义项 | 稳定 id（`en.bat.animal`，必须以词 ID 为前缀）、meaning_zh（不可改）、image_asset_id、status |
-| | courses | 课程身份 | 稳定 id、subject、grade、sort_order（同学科同年级唯一）、template_id、current_version_id（复合外键：必须是本课程的版本）、status active/retired |
+| | courses | 课程身份（一册） | 稳定 id（如 `en-g1-a`）、subject、grade、sort_order（同学科同年级唯一）、template_id、current_version_id（复合外键：必须是本课程的版本）、status active/retired |
 | | course_versions | 已发布版本（只追加） | `UNIQUE(course_id, version_no)`、`UNIQUE(draft_id)`、template_id/version、title、instruction_lang、published_by |
 | | course_drafts | 草稿 | status draft/in_review/publishing/published/discarded、生成列 open_key + `UNIQUE(course_id, open_key)`（每课最多一份未完成草稿）、document JSON、check_report、非草稿必须 check_passed、发布前必须有审核人、published ↔ published_version_id |
-| | levels | 关卡（只追加） | course_version_id、level_key（跨版本稳定）、seq、scene_asset_id、pages（绘本）、hiding_spots（恰好 3 个藏匿点定义） |
+| | units | 单元（只追加） | course_version_id、unit_key（跨版本稳定，正则）、seq、title、title_zh、cover_asset_id；`UNIQUE(course_version_id, unit_key)`、`UNIQUE(course_version_id, seq)`、`UNIQUE(course_version_id, id)` 供关卡复合外键 |
+| | levels | 关卡（只追加） | course_version_id + unit_id（复合外键：单元属于同一版本）、level_key（单元内唯一、跨版本稳定：`UNIQUE(unit_id, level_key)`）、seq（单元内，`UNIQUE(unit_id, seq)`）、scene_asset_id、pages（绘本）、hiding_spots（恰好 3 个藏匿点定义） |
 | | questions | 题目可见部分（只追加） | level_id、question_key、seq 1–8、type、scored（`read_aloud`=0）、sense_id、visible JSON（CHECK 拒绝答案字段） |
 | | question_answers | 题目答案部分（只追加） | PK question_id、answer JSON、explanation |
-| learning（5） | plays | 作答 | kind level/review、course_version_id + level_id（复合外键：关卡属于该版本）、`UNIQUE(child_id, client_request_id)`、items（下发题目与选项顺序）、responses（每题第一次作答）、status、expires_at |
-| | level_progress | 最佳星级 | PK(child_id, course_id, level_key)、best_stars 0–3、first_passed_at 与星级一致 |
+| learning（6） | plays | 作答 | kind level/review、course_version_id + level_id（复合外键：关卡属于该版本）、`UNIQUE(child_id, client_request_id)`、items（下发题目与选项顺序）、responses（每题第一次作答）、status、expires_at |
+| | level_progress | 关卡最佳星级 | PK(child_id, course_id, unit_key, level_key)、best_stars 0–3、first_passed_at 与星级一致 |
+| | unit_progress | 单元进度 | PK(child_id, course_id, unit_key)、level_count ≥ 1、levels_three_star ≤ levels_passed ≤ level_count、first_completed_at（下一单元解锁，之后不收回）、first_all_three_star_at（必须晚于完成；触发“单元首次全 3 星级通关”一次） |
 | | attempts | 闯关记录（只追加） | `UNIQUE(play_id)`、course_version_id + level_id、scored_count 4–8、生成列 accuracy_pct/stars/passed、stars_awarded、answers JSON、activity_date |
 | | review_items | 间隔复习条目 | item_type sense/question 与 sense_id/question_id 互斥、生成列 ref_id、`UNIQUE(child_id,item_type,ref_id)`、box 1–6、due_date |
 | | review_sessions | 复习结算（只追加） | `UNIQUE(play_id)`、item_count ≤ 20、生成列 completion_date + 唯一键（每天最多完成一次） |
@@ -58,7 +60,7 @@
 | | child_pets | 已领养伙伴（无 DELETE） | `UNIQUE(child_id, species_id)`、生成列 companion_key + 唯一（每人 1 只跟随伙伴）、level/xp/total_xp、adopted_with、price_paid、adopt_ledger_id 唯一 |
 | discovery（5） | yahaha_sets | 图鉴套组 | name 唯一、bonus_stars 1–50、status |
 | | yahaha_styles | 呀哈哈家族款式 | style_key、set_id、rarity、per_child_max 1–100、total_stock、placed_total ≤ total_stock、status（上架必须有审核人与时间）、design JSON |
-| | drop_rules | 投放规则 | rule_type campaign/course、status、source_text、spec JSON、trigger_type、effect、probability_pct 1–100、daily_cap 1–10、total_quantity/consumed（consumed ≤ total）、时间窗；类型与触发/效果组合、课程规则必须有课程、限定款式必须列款式等 CHECK |
+| | drop_rules | 投放规则 | rule_type campaign/course、status、source_text、spec JSON、trigger_type、effect、probability_pct 1–100、daily_cap 1–10、total_quantity/consumed（consumed ≤ total）、时间窗；类型与触发/效果组合、课程规则至少 1 个范围目标、范围 `spec.scope.targets[{courseId, unitKey?, levelKey?}]` 由 `JSON_SCHEMA_VALID` 校验（有 levelKey 必须有 unitKey、≤ 20 个、无未知字段）、“单元首次全 3 星级”不能指向关卡、“指定关卡通关”的目标都必须是关卡、限定款式必须列款式等 CHECK |
 | | hiding_spots | 藏匿点 | `UNIQUE(attempt_id, spot_no)`（spot_no 1–3）、`UNIQUE(child_id, local_date, daily_seq)`（daily_seq 1–10，与 style_id 同时有或同时无）、rule_id、revealed_at（只能更新这一列） |
 | | yahaha_finds | 图鉴记录（只追加） | `UNIQUE(spot_id)`、复合外键 (spot_id, style_id) → 藏匿点里的款式、fragment_ledger_id 唯一 |
 | social（5） | family_friendships | 好友家庭 | low<high、生成列 live_key + 唯一键（每对家庭最多一条进行中/有效）、状态字段一致 |
@@ -70,16 +72,16 @@
 | controls（3） | child_controls | 每孩子管控设置 | daily_minutes 10–300、allowed_start<allowed_end、ai_daily_limit 0–100、leaderboard_opt_out、version |
 | | course_overrides | 课程开放覆盖 | PK(child_id, course_id)、mode open/closed |
 | | usage_days | 每孩子每日用时 | used_seconds、bonus_minutes（15 的倍数 ≤120）、window_extended_until、last_heartbeat_at |
-| reports（2） | daily_reports | 每日汇总 | PK(child_id, report_date)、各项计数（含 fragments_in、yahaha_found）、top_missed JSON |
+| reports（2） | daily_reports | 每日汇总 | PK(child_id, report_date)、各项计数（含 units_completed、fragments_in、yahaha_found）、top_missed JSON |
 | | email_outbox | 邮件发件箱 | `UNIQUE(dedupe_key)`、status、attempts ≤ 10、发送后清空正文 |
-| platform（3） | system_settings | 系统设置 | 键白名单 CHECK；`discovery.spot_probability_pct` 1–100、`discovery.daily_cap` 1–10、`companion.den_base_slots` 1–10、`learning.play_ttl_minutes` 30–720、`agents.limits`（max_steps 1–20、child_max_steps 1–5、max_pipeline_steps 2–6、run_timeout_s 30–1800、child_run_timeout_s 5–30）、`agents.stats_min_group` 3–50 的取值 CHECK；version |
+| platform（3） | system_settings | 系统设置 | 键白名单 CHECK；`discovery.spot_probability_pct` 1–100、`discovery.daily_cap` 1–10、`companion.den_base_slots` 1–10、`learning.play_ttl_minutes` 30–720、`content.unit_levels`（1 ≤ min ≤ max ≤ 12）、`agents.limits`（max_steps 1–20、child_max_steps 1–5、max_pipeline_steps 2–6、run_timeout_s 30–1800、child_run_timeout_s 5–30）、`agents.stats_min_group` 3–50 的取值 CHECK；version |
 | | idempotency_requests | 请求幂等 | `UNIQUE(actor_type, actor_id, client_request_id)`、request_hash、只存 2xx |
 | | schema_migrations | 迁移记账 | version、checksum |
 
-**系统设置初始值**：`ai.enabled=true`、`ai.model`、`registration.mode="invite"`、`discovery.enabled=true`、`discovery.spot_probability_pct=20`、`discovery.daily_cap=3`、`discovery.rarity_weights={common:100,uncommon:30,rare:10,legendary:2}`、`discovery.milestone_bonus={10:3,30:5,100:10}`、`companion.den_base_slots=3`、`companion.den_slot_prices=[30,60,120]`、`companion.fragment_pass_scope="per_level_per_day"`、`studio.default_monthly_cap_fen=20000`、`studio.unit_prices`、`studio.voices`、`learning.play_ttl_minutes=120`、`content.allow_self_review=true`、`agents.limits={max_steps:20, child_max_steps:3, max_pipeline_steps:6, llm_timeout_s:60, child_llm_timeout_s:20, tool_timeout_s:30, run_timeout_s:600, child_run_timeout_s:25, output_repair_attempts:1}`、`agents.page_routes`、`agents.stats_min_group=5`（各项含义见[开放问题](../01-requirements/open-questions.md) Q5–Q25）。0001 迁移还写入系统技能 `child-safety`（id 1，内容由 `xingya seeds:apply` 从仓库导入）与 7 个默认 AI 角色及其 v1 草稿版本（课程设计师、美术设计师、配音师、活动策划、质检员、运营分析师、呀哈哈队长；月度预算合计 ¥200，Q19），审核发布后才能运行。伙伴默认档位（初级/中级/高级/稀有，Q5）与每档 4 个成长阶段（Q8）同样由 0001 迁移写入 `pet_tiers`/`pet_tier_stages`，之后在后台修改（见 [companion 需求](../01-requirements/modules/companion.md)）。
+**系统设置初始值**：`ai.enabled=true`、`ai.model`、`registration.mode="invite"`、`discovery.enabled=true`、`discovery.spot_probability_pct=20`、`discovery.daily_cap=3`、`discovery.rarity_weights={common:100,uncommon:30,rare:10,legendary:2}`、`discovery.milestone_bonus={10:3,30:5,100:10}`、`companion.den_base_slots=3`、`companion.den_slot_prices=[30,60,120]`、`companion.fragment_pass_scope="per_level_per_day"`、`studio.default_monthly_cap_fen=20000`、`studio.unit_prices`、`studio.voices`、`learning.play_ttl_minutes=120`、`content.allow_self_review=true`、`content.unit_levels={min:3,max:6}`（每个单元的关卡数，Q26）、`agents.limits={max_steps:20, child_max_steps:3, max_pipeline_steps:6, llm_timeout_s:60, child_llm_timeout_s:20, tool_timeout_s:30, run_timeout_s:600, child_run_timeout_s:25, output_repair_attempts:1}`、`agents.page_routes`、`agents.stats_min_group=5`（各项含义见[开放问题](../01-requirements/open-questions.md) Q5–Q25）。0001 迁移还写入系统技能 `child-safety`（id 1，内容由 `xingya seeds:apply` 从仓库导入）与 7 个默认 AI 角色及其 v1 草稿版本（课程设计师、美术设计师、配音师、活动策划、质检员、运营分析师、呀哈哈队长；月度预算合计 ¥200，Q19），审核发布后才能运行。伙伴默认档位（初级/中级/高级/稀有，Q5）与每档 4 个成长阶段（Q8）同样由 0001 迁移写入 `pet_tiers`/`pet_tier_stages`，之后在后台修改（见 [companion 需求](../01-requirements/modules/companion.md)）。
 
 ### 6.2 租户隔离
-- 每张**家庭数据表**（家长、孩子、会话、作答、账本、伙伴、藏匿点、图鉴、社交、管控、报告等）都有 `family_id`；**全站共享的目录表**没有 `family_id`：词库与课程（words、word_senses、courses、course_versions、course_drafts、levels、questions、question_answers）、工作室（ai_jobs、ai_budget_months、assets、materials，以及技能与 AI 角色的 10 张表；其中运行记录只含管理端运行，孩子对话不进入）、shop_items、伙伴档位与种类（pet_tiers、pet_tier_stages、pet_species）、呀哈哈家族目录与规则（yahaha_sets、yahaha_styles、drop_rules）、admin_accounts 与平台表。目录表只有系统管理员能写（权限矩阵 A），孩子端只读取已发布/已上架的行，不含任何家庭数据。涉及孩子/家长的外键都是 `(family_id, child_id) → children(family_id, id)` 形式的复合外键，数据库层面保证一行不可能“挂”到别的家庭的孩子上（已实测）。
+- 每张**家庭数据表**（家长、孩子、会话、作答、账本、伙伴、藏匿点、图鉴、社交、管控、报告等）都有 `family_id`；**全站共享的目录表**没有 `family_id`：词库与课程（words、word_senses、courses、course_versions、course_drafts、units、levels、questions、question_answers）、工作室（ai_jobs、ai_budget_months、assets、materials，以及技能与 AI 角色的 10 张表；其中运行记录只含管理端运行，孩子对话不进入）、shop_items、伙伴档位与种类（pet_tiers、pet_tier_stages、pet_species）、呀哈哈家族目录与规则（yahaha_sets、yahaha_styles、drop_rules）、admin_accounts 与平台表。目录表只有系统管理员能写（权限矩阵 A），孩子端只读取已发布/已上架的行，不含任何家庭数据。涉及孩子/家长的外键都是 `(family_id, child_id) → children(family_id, id)` 形式的复合外键，数据库层面保证一行不可能“挂”到别的家庭的孩子上（已实测）。
 - 每个 repo 函数的第一个参数是 `familyId`（来自已鉴权主体，绝不来自请求体），查询必带该条件。集成测试按路由表自动生成“用 B 家庭会话访问 A 家庭资源 → 404”用例。
 
 ### 6.3 数据库账号
@@ -94,10 +96,10 @@
 | 授权 | 表 |
 | --- | --- |
 | 只读 | schema_migrations |
-| 只追加（SELECT、INSERT） | ledger、attempts、review_sessions、gifts、audit_events、yahaha_finds、agent_skills（随角色版本保存）；**已发布课程**：course_versions、levels、questions、question_answers |
+| 只追加（SELECT、INSERT） | ledger、attempts、review_sessions、gifts、audit_events、yahaha_finds、agent_skills（随角色版本保存）；**已发布课程**：course_versions、units、levels、questions、question_answers |
 | 插入 + 仅指定列可更新 | words（phonetic、audio_asset_id、status；拼写不可改）、word_senses（image_asset_id、status；释义不可改）、hiding_spots（revealed_at；放置内容不可改）、assets（visibility、status）；skills、agents（status、current_version_id、version；受众与标识不可改）、skill_versions、agent_versions（status 与审核列；内容不可改）、skill_allowed_agents（revoked_at、revoked_by_admin_id） |
 | SELECT、UPDATE（不能插入） | admin_accounts、system_settings（不能新增键） |
-| SELECT、INSERT、UPDATE（不能删除） | families、parents、children、family_devices、courses、course_drafts、level_progress、review_items、balances、shop_items、child_items、reward_options、redemptions、pet_tiers、pet_tier_stages、pet_species、pet_dens、child_pets、yahaha_sets、yahaha_styles、drop_rules、ai_jobs、ai_budget_months、agent_budget_months、quick_tasks、agent_runs、family_friendships、messages、abuse_reports、child_controls、usage_days、daily_reports |
+| SELECT、INSERT、UPDATE（不能删除） | families、parents、children、family_devices、courses、course_drafts、level_progress、unit_progress、review_items、balances、shop_items、child_items、reward_options、redemptions、pet_tiers、pet_tier_stages、pet_species、pet_dens、child_pets、yahaha_sets、yahaha_styles、drop_rules、ai_jobs、ai_budget_months、agent_budget_months、quick_tasks、agent_runs、family_friendships、messages、abuse_reports、child_controls、usage_days、daily_reports |
 | 可删除 | sessions、auth_tokens、idempotency_requests、ai_chat_usage、email_outbox、course_overrides、blocks、plays（过期清理）、materials、agent_run_steps（180 天清理；不可改） |
 
 - 账号创建时 `ACCOUNT LOCK` 且无口令；服务器引导脚本从 `/etc/xingya/secrets.env` 读取口令执行 `ALTER USER … IDENTIFIED BY … ACCOUNT UNLOCK`。仓库中没有任何口令。
@@ -132,5 +134,6 @@
 - 投放规则：概率 0 或 101、每日上限 11、限时活动无结束时间、课程规则未绑定课程、限定款式未列款式、消耗超过总量均被 CHECK 拒绝；系统设置中全局概率 1–100、每日上限 1–10、作答有效期 30–720 被 CHECK 约束，未知设置键连 migrator 也写不进。
 - 工作室：第 3 个并发任务被拒（槽位唯一）、槽位只能 1/2、运行中必须占槽位、本机进程任务同时最多 1 个；实际费用不得超过预估；预留 + 已花费不得超过月度上限；图片 ≤ 300 KB、AI 图片必须记录提示词；素材 OSS 路径不能改。
 - 第 10 部分重新验证：**207 项全部通过**（新增“每张表都有应用授权”全覆盖检查与约 50 项 Skill 与 AI 角色检查）；表 65、外键 145、CHECK 172、非主键唯一键 68、生成列 12；两次构建指纹一致 `b8a54a47ac17`。
+- 单元层重新验证（ADR 0016）：**236 项全部通过**；表 67、外键 149、CHECK 180、非主键唯一键 71、生成列 12；两次构建指纹一致 `7314879eb6ac`。新增检查：同一版本内 `unit_key` 与单元顺序唯一、`unit_key` 格式、单元必须属于已发布版本、不同单元可有相同 `level_key` 而单元内 `level_key` 与关卡顺序唯一、关卡的单元必须属于同一版本（复合外键）、已发布单元不可改不可删；关卡进度按 `(课程, unit_key, level_key)`；单元进度唯一（首次全 3 星级只触发一次）、计数关系与“先完成后全 3 星级”CHECK、家庭复合外键；投放规则可指向课程/单元/关卡（JSON Schema CHECK：关卡必须带单元、无未知字段、课程 ID 格式），“单元首次全 3 星级”不能指向关卡、“指定关卡通关”的目标必须都是关卡；`content.unit_levels` 范围 CHECK。
 - Skill 与 AI 角色：默认 1 个系统技能、7 个角色与 7 个 v1 草稿由迁移写入；系统技能不能停用；技能/角色标识正则；输出模式必须是 object、工具 ≤ 20；导入/编辑来源与创建人一致；发布必须有审核人，面向孩子的技能与角色发布必须有儿童安全审核人；版本内容列不可改、受众不可改（列级授权）；当前版本必须属于本技能/角色；不在白名单的角色、受众不同的角色不能挂载；固定版本必须属于该技能；同一角色版本优先级唯一；角色预算 `reserved + spent ≤ cap` 且月份必须有全站预算行；运行只能是管理端角色（儿童角色版本插入 `agent_runs` 被拒）、步数 ≤ 20、实际 ≤ 预估、流水线 2–6 步且步骤序号唯一；步骤序号 1–20、工具步必须有工具名；快捷任务只能指向管理端角色；聊天用量只能关联儿童角色版本；`agents.limits` 越界（如 max_steps 21）与 `agents.stats_min_group` 越界被 CHECK 拒绝。
 - 伙伴：默认 4 个档位与 16 个阶段由迁移写入、档位价格范围、第 1 阶段从 1 级开始、上架必须经过审核、每人只有一只跟随伙伴、同种伙伴每人一只、伙伴不能物理删除、营地扩建最多 10 格。

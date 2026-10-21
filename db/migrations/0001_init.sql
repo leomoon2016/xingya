@@ -2,7 +2,10 @@
 -- 0001_init.sql —— 星芽学园首个数据库迁移
 -- 【草案，设计文档评审通过前可能调整】
 -- 因尚未部署任何环境，2026-10-21 的设计变更（数据库课程与版本、共享词库、题目可见/答案分离、
--- 伙伴、呀哈哈发现、AI 工作室、碎片币种）直接修订本文件，而不是追加新的迁移文件。
+-- 伙伴、呀哈哈发现、AI 工作室、碎片币种、Skill 与 AI 角色、课程与关卡之间的单元层）直接修订本文件，
+-- 而不是追加新的迁移文件。
+-- 内容层级：年级 > 课程（一册，如 en-g1-a = 一年级上册）> 单元（unit_key 如 u03）> 关卡 > 题目；
+-- 发布与版本以课程为单位，课程版本包含它的全部单元（ADR 0016）。
 -- 设计说明：docs/03-design/data-model.md；角色与授权：db/roles.sql；验证：db/verify/
 -- 目标：MySQL 8.4 LTS，InnoDB，utf8mb4；所有时间列存 UTC（连接 time_zone='+00:00'）
 -- 执行：首次初始化时第 0 段（CREATE DATABASE）需要 root；之后的迁移由 migrator 账号按文件名顺序
@@ -11,10 +14,10 @@
 --   * 业务表都带 family_id，并用 (family_id, child_id) 复合外键把行“钉”在同一家庭；
 --   * 外键一律 RESTRICT（不级联删除）；孩子/家长只停用不硬删；
 --   * 只追加表（ledger、attempts、review_sessions、gifts、audit_events、yahaha_finds，
---     以及已发布课程版本 course_versions、levels、questions、question_answers）
+--     以及已发布课程版本 course_versions、units、levels、questions、question_answers）
 --     对应用账号只授予 SELECT, INSERT（见 db/roles.sql），没有 UPDATE/DELETE；
 --   * 课程编辑只发生在 course_drafts；发布 = 在一个事务内插入新版本行 + 切换 courses.current_version_id。
--- 表数：55（业务 52 + 平台 3）
+-- 表数：67（业务 64 + 平台 3）
 -- =====================================================================
 
 SET NAMES utf8mb4;
@@ -598,7 +601,7 @@ CREATE TABLE agent_run_steps (                               -- 每一步的记�
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 3. 课程内容 content（8 张：共享词库 + 数据库课程与版本；已发布版本只追加、不可改）
+-- 3. 课程内容 content（9 张：共享词库 + 数据库课程、版本与单元；已发布版本只追加、不可改）
 -- ---------------------------------------------------------------------
 CREATE TABLE words (                                         -- 共享词库：拼写形式
   id             VARCHAR(64)  NOT NULL,                      -- 稳定词 ID，如 en.apple、en.ice-cream；永不改义、永不复用
@@ -634,7 +637,7 @@ CREATE TABLE word_senses (                                   -- 义项：复习�
 ) ENGINE=InnoDB;
 
 CREATE TABLE courses (                                       -- 课程身份（稳定 ID）；内容在版本里
-  id                  VARCHAR(64)  NOT NULL,                 -- 如 en-g1-u01
+  id                  VARCHAR(64)  NOT NULL,                 -- 一册一门课，如 en-g1-a（一年级上册）、en-g1-b（下册）
   subject             VARCHAR(16)  NOT NULL,
   grade               TINYINT UNSIGNED NOT NULL,
   sort_order          INT          NOT NULL,
@@ -687,7 +690,7 @@ CREATE TABLE course_drafts (                                 -- 可编辑草稿�
   template_version     SMALLINT UNSIGNED NOT NULL,
   status               ENUM('draft','in_review','publishing','published','discarded') NOT NULL DEFAULT 'draft',
   open_key             TINYINT(1)   AS (IF(status IN ('draft','in_review','publishing'), 1, NULL)) STORED,
-  document             JSON         NOT NULL,                -- 知识清单、关卡、题目（含答案与解析），结构见 course-model.md
+  document             JSON         NOT NULL,                -- 知识清单、单元、关卡、题目（含答案与解析），结构见 course-model.md
   check_report         JSON         NULL,                    -- 自动检查结果：每题红色标记与原因
   check_passed         TINYINT(1)   NOT NULL DEFAULT 0,      -- 最近一次检查无错误且之后未再修改
   created_by_admin_id  BIGINT UNSIGNED NOT NULL,
@@ -710,21 +713,40 @@ CREATE TABLE course_drafts (                                 -- 可编辑草稿�
   CONSTRAINT ck_course_drafts_published CHECK ((status = 'published') = (published_version_id IS NOT NULL))
 ) ENGINE=InnoDB;
 
-CREATE TABLE levels (                                        -- 只追加：属于某个已发布版本
+CREATE TABLE units (                                         -- 只追加：单元（一个主题）属于某个已发布版本；单元内关卡数由模板规定（默认 3–6，Q26）
   id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   course_version_id BIGINT UNSIGNED NOT NULL,
-  level_key         VARCHAR(32)  NOT NULL,                   -- 跨版本稳定（如 l01）；进度按 (课程, level_key) 记录
-  seq               SMALLINT UNSIGNED NOT NULL,
+  unit_key          VARCHAR(32)  NOT NULL,                   -- 跨版本稳定（如 u03）；单元进度按 (课程, unit_key) 记录
+  seq               SMALLINT UNSIGNED NOT NULL,              -- 课程内顺序；单元按顺序解锁
+  title             VARCHAR(60)  NOT NULL,                   -- 如 Unit 3 Animals
+  title_zh          VARCHAR(60)  NULL,                       -- 如 动物
+  cover_asset_id    BIGINT UNSIGNED NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_units_key (course_version_id, unit_key),
+  UNIQUE KEY uq_units_seq (course_version_id, seq),
+  UNIQUE KEY uq_units_version_id (course_version_id, id),   -- 供关卡复合外键：关卡的单元必须属于同一版本
+  CONSTRAINT fk_units_version FOREIGN KEY (course_version_id) REFERENCES course_versions (id),
+  CONSTRAINT fk_units_cover   FOREIGN KEY (cover_asset_id) REFERENCES assets (id),
+  CONSTRAINT ck_units_key CHECK (REGEXP_LIKE(unit_key, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')),
+  CONSTRAINT ck_units_seq CHECK (seq >= 1)
+) ENGINE=InnoDB;
+
+CREATE TABLE levels (                                        -- 只追加：属于某个已发布版本的某个单元
+  id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  course_version_id BIGINT UNSIGNED NOT NULL,
+  unit_id           BIGINT UNSIGNED NOT NULL,
+  level_key         VARCHAR(32)  NOT NULL,                   -- 单元内跨版本稳定（如 l01）；进度按 (课程, unit_key, level_key) 记录
+  seq               SMALLINT UNSIGNED NOT NULL,              -- 单元内顺序；关卡在单元内按顺序解锁
   title             VARCHAR(60)  NOT NULL,
   scene_asset_id    BIGINT UNSIGNED NULL,                    -- 关卡地图场景图（藏匿点所在）
   pages             JSON         NULL,                       -- 绘本阅读课的分页内容（图、句、音频）
   hiding_spots      JSON         NOT NULL,                   -- 场景中的 3 个藏匿点定义 [{kind, x, y}]（呀哈哈发现用）
   PRIMARY KEY (id),
-  UNIQUE KEY uq_levels_key (course_version_id, level_key),
-  UNIQUE KEY uq_levels_seq (course_version_id, seq),
+  UNIQUE KEY uq_levels_key (unit_id, level_key),            -- level_key 在单元内唯一（不同单元都可以有 l01）
+  UNIQUE KEY uq_levels_seq (unit_id, seq),
   UNIQUE KEY uq_levels_version_id (course_version_id, id),
-  CONSTRAINT fk_levels_version FOREIGN KEY (course_version_id) REFERENCES course_versions (id),
-  CONSTRAINT fk_levels_scene   FOREIGN KEY (scene_asset_id) REFERENCES assets (id),
+  CONSTRAINT fk_levels_unit  FOREIGN KEY (course_version_id, unit_id) REFERENCES units (course_version_id, id),
+  CONSTRAINT fk_levels_scene FOREIGN KEY (scene_asset_id) REFERENCES assets (id),
   CONSTRAINT ck_levels_key CHECK (REGEXP_LIKE(level_key, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')),
   CONSTRAINT ck_levels_seq CHECK (seq >= 1),
   CONSTRAINT ck_levels_spots CHECK (JSON_TYPE(hiding_spots) = 'ARRAY' AND JSON_LENGTH(hiding_spots) = 3)
@@ -760,7 +782,7 @@ CREATE TABLE question_answers (                              -- 只追加：答�
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 4. 学习 learning（5 张）
+-- 4. 学习 learning（6 张）
 -- ---------------------------------------------------------------------
 CREATE TABLE plays (                                         -- 一次作答（闯关或复习）：下发可见题目，逐题记录第一次作答
   id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -789,23 +811,45 @@ CREATE TABLE plays (                                         -- 一次作答（�
   CONSTRAINT ck_plays_request_id CHECK (REGEXP_LIKE(client_request_id, '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', 'c'))
 ) ENGINE=InnoDB;
 
-CREATE TABLE level_progress (                                -- 按 (课程, level_key) 记录，课程改版不丢进度
+CREATE TABLE level_progress (                                -- 按 (课程, unit_key, level_key) 记录，课程改版不丢进度
   family_id       BIGINT UNSIGNED NOT NULL,
   child_id        BIGINT UNSIGNED NOT NULL,
   course_id       VARCHAR(64)  NOT NULL,
+  unit_key        VARCHAR(32)  NOT NULL,
   level_key       VARCHAR(32)  NOT NULL,
-  best_stars      TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  best_stars      TINYINT UNSIGNED NOT NULL DEFAULT 0,       -- 最佳星级
   best_accuracy   TINYINT UNSIGNED NOT NULL DEFAULT 0,
   attempts_count  INT UNSIGNED NOT NULL DEFAULT 0,
   first_passed_at DATETIME(3)  NULL,
   last_attempt_at DATETIME(3)  NOT NULL,
-  PRIMARY KEY (child_id, course_id, level_key),
+  PRIMARY KEY (child_id, course_id, unit_key, level_key),
   KEY ix_level_progress_family (family_id, child_id),
   CONSTRAINT fk_level_progress_child  FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_level_progress_course FOREIGN KEY (course_id) REFERENCES courses (id),
   CONSTRAINT ck_level_progress_stars CHECK (best_stars BETWEEN 0 AND 3),
   CONSTRAINT ck_level_progress_accuracy CHECK (best_accuracy <= 100),
   CONSTRAINT ck_level_progress_passed CHECK ((best_stars = 0) = (first_passed_at IS NULL))
+) ENGINE=InnoDB;
+
+CREATE TABLE unit_progress (                                 -- 单元进度：按 (课程, unit_key) 记录；结算事务内更新
+  family_id               BIGINT UNSIGNED NOT NULL,
+  child_id                BIGINT UNSIGNED NOT NULL,
+  course_id               VARCHAR(64)  NOT NULL,
+  unit_key                VARCHAR(32)  NOT NULL,
+  level_count             SMALLINT UNSIGNED NOT NULL,        -- 最近一次结算时当前版本中本单元的关卡数
+  levels_passed           SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  levels_three_star       SMALLINT UNSIGNED NOT NULL DEFAULT 0,  -- 最佳星级 = 3 的关卡数
+  first_completed_at      DATETIME(3)  NULL,                 -- 首次全部关卡通过：下一单元第一关从此解锁（之后不再收回）
+  first_all_three_star_at DATETIME(3)  NULL,                 -- 首次全部关卡 3 星级：触发 unit_first_all_three_star（只一次）
+  updated_at              DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (child_id, course_id, unit_key),
+  KEY ix_unit_progress_family (family_id, child_id),
+  CONSTRAINT fk_unit_progress_child  FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_unit_progress_course FOREIGN KEY (course_id) REFERENCES courses (id),
+  CONSTRAINT ck_unit_progress_key CHECK (REGEXP_LIKE(unit_key, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')),
+  CONSTRAINT ck_unit_progress_counts CHECK (level_count >= 1 AND levels_three_star <= levels_passed AND levels_passed <= level_count),
+  CONSTRAINT ck_unit_progress_three_star CHECK (first_all_three_star_at IS NULL
+    OR (first_completed_at IS NOT NULL AND first_all_three_star_at >= first_completed_at))
 ) ENGINE=InnoDB;
 
 CREATE TABLE attempts (                                      -- 只追加：一次闯关 = 一行
@@ -900,7 +944,7 @@ CREATE TABLE ledger (                                        -- 星星与碎片�
                        'pet_adopt','den_expand','discovery','discovery_bonus') NOT NULL,
   delta           INT          NOT NULL,
   balance_after   INT          NOT NULL,                     -- 该孩子该币种的余额
-  source_key      VARCHAR(96)  NOT NULL,                     -- 业务幂等键，如 attempt:123、frag:level:en-g1-u01:l01:2026-10-21
+  source_key      VARCHAR(96)  NOT NULL,                     -- 业务幂等键，如 attempt:123、frag:level:en-g1-a:u03:l01:2026-10-21
   local_date      DATE         NOT NULL,
   counts_for_leaderboard TINYINT(1) AS (currency = 'star' AND kind IN ('level_pass','review_day','streak')) STORED,  -- = “学习星”
   actor_parent_id BIGINT UNSIGNED NULL,
@@ -1165,6 +1209,7 @@ CREATE TABLE yahaha_styles (                                 -- 呀哈哈家族�
 ) ENGINE=InnoDB;
 
 CREATE TABLE drop_rules (                                    -- 投放规则：限时活动规则 / 课程设定规则（AI 只负责填写，服务端校验）
+                                                             -- 范围 spec.scope.targets：[{courseId, unitKey?, levelKey?}]，可指向课程、单元或关卡
   id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name                VARCHAR(40)  NOT NULL,
   rule_type           ENUM('campaign','course') NOT NULL,
@@ -1193,9 +1238,25 @@ CREATE TABLE drop_rules (                                    -- 投放规则：�
   CONSTRAINT ck_drop_rules_type CHECK (
        (rule_type = 'campaign' AND ends_at IS NOT NULL AND trigger_type = 'level_pass'
           AND effect IN ('raise_probability','restrict_styles'))
-    OR (rule_type = 'course' AND COALESCE(JSON_LENGTH(spec, '$.scope.courseIds'), 0) >= 1
+    OR (rule_type = 'course' AND COALESCE(JSON_LENGTH(spec, '$.scope.targets'), 0) >= 1
           AND trigger_type IN ('unit_first_all_three_star','specific_level_pass','streak_days','level_pass')
           AND effect IN ('guaranteed','raise_probability'))),
+  -- 范围结构：课程 / 单元 / 关卡三级；有 levelKey 必须有 unitKey；最多 20 个目标
+  CONSTRAINT ck_drop_rules_scope CHECK (JSON_EXTRACT(spec, '$.scope') IS NULL OR JSON_SCHEMA_VALID('{
+      "type": "object", "required": ["targets"], "additionalProperties": false,
+      "properties": { "targets": { "type": "array", "minItems": 1, "maxItems": 20,
+        "items": { "type": "object", "required": ["courseId"], "additionalProperties": false,
+          "properties": {
+            "courseId": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+            "unitKey":  { "type": "string", "maxLength": 32, "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+            "levelKey": { "type": "string", "maxLength": 32, "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" } },
+          "dependencies": { "levelKey": ["unitKey"] } } } } }', JSON_EXTRACT(spec, '$.scope'))),
+  -- 触发与范围一致：“单元首次全 3 星级”只能指向课程或单元；“指定关卡通关”的每个目标都必须是关卡
+  CONSTRAINT ck_drop_rules_trigger_scope CHECK (
+       (trigger_type <> 'unit_first_all_three_star' OR NOT JSON_CONTAINS_PATH(spec, 'one', '$.scope.targets[*].levelKey'))
+   AND (trigger_type <> 'specific_level_pass'
+        OR (COALESCE(JSON_LENGTH(spec, '$.scope.targets'), 0) >= 1
+            AND COALESCE(JSON_LENGTH(JSON_EXTRACT(spec, '$.scope.targets[*].levelKey')), 0) = JSON_LENGTH(spec, '$.scope.targets')))),
   CONSTRAINT ck_drop_rules_effect CHECK (
        (effect <> 'raise_probability' OR probability_pct IS NOT NULL)
    AND (effect <> 'restrict_styles' OR COALESCE(JSON_LENGTH(spec, '$.styleIds'), 0) >= 1)),
@@ -1476,6 +1537,7 @@ CREATE TABLE daily_reports (                                 -- 每晚聚合，�
   active_seconds    INT UNSIGNED NOT NULL DEFAULT 0,
   attempts_count    SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   levels_passed     SMALLINT UNSIGNED NOT NULL DEFAULT 0,      -- 当天首次通关的关卡数
+  units_completed   SMALLINT UNSIGNED NOT NULL DEFAULT 0,      -- 当天首次完成（全部关卡通过）的单元数
   scored_questions  SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   correct_questions SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   review_done_items SMALLINT UNSIGNED NOT NULL DEFAULT 0,
@@ -1535,7 +1597,7 @@ CREATE TABLE system_settings (
     'discovery.enabled','discovery.spot_probability_pct','discovery.daily_cap','discovery.rarity_weights','discovery.milestone_bonus',
     'companion.den_base_slots','companion.den_slot_prices','companion.fragment_pass_scope',
     'studio.default_monthly_cap_fen','studio.unit_prices','studio.voices',
-    'learning.play_ttl_minutes','content.allow_self_review',
+    'learning.play_ttl_minutes','content.allow_self_review','content.unit_levels',
     'agents.limits','agents.page_routes','agents.stats_min_group')),
   -- 规则边界由数据库保证（AI 或界面填错都写不进去）
   CONSTRAINT ck_system_settings_probability CHECK (setting_key <> 'discovery.spot_probability_pct'
@@ -1546,6 +1608,9 @@ CREATE TABLE system_settings (
     OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 1 AND 10)),
   CONSTRAINT ck_system_settings_play_ttl CHECK (setting_key <> 'learning.play_ttl_minutes'
     OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 30 AND 720)),
+  CONSTRAINT ck_system_settings_unit_levels CHECK (setting_key <> 'content.unit_levels'   -- 每个单元的关卡数范围（Q26，默认 3–6）
+    OR (JSON_TYPE(value) = 'OBJECT' AND JSON_TYPE(JSON_EXTRACT(value, '$.min')) = 'INTEGER' AND JSON_TYPE(JSON_EXTRACT(value, '$.max')) = 'INTEGER'
+        AND JSON_EXTRACT(value, '$.min') BETWEEN 1 AND 12 AND JSON_EXTRACT(value, '$.max') BETWEEN JSON_EXTRACT(value, '$.min') AND 12)),
   CONSTRAINT ck_system_settings_agent_limits CHECK (setting_key <> 'agents.limits'
     OR (JSON_TYPE(value) = 'OBJECT'
         AND JSON_EXTRACT(value, '$.max_steps') BETWEEN 1 AND 20              -- 工具循环最多 20 步（用户指定上限）
@@ -1598,6 +1663,7 @@ INSERT INTO system_settings (setting_key, value) VALUES
   ('studio.voices',                   CAST('{"zh":"zh_CN-huayan-medium","en":"en_US-amy-medium"}' AS JSON)),
   ('learning.play_ttl_minutes',       CAST('120' AS JSON)),
   ('content.allow_self_review',       CAST('true' AS JSON)),
+  ('content.unit_levels',             CAST('{"min":3,"max":6}' AS JSON)),
   ('agents.limits',                   CAST('{"max_steps":20,"child_max_steps":3,"max_pipeline_steps":6,"llm_timeout_s":60,"child_llm_timeout_s":20,"tool_timeout_s":30,"run_timeout_s":600,"child_run_timeout_s":25,"output_repair_attempts":1}' AS JSON)),
   ('agents.page_routes',              CAST('{"courses":"course-designer","pets":"art-designer","yahaha":"art-designer","rules":"event-planner","skills":"qa-reviewer","agents":"qa-reviewer","runs":"ops-analyst","stats":"ops-analyst"}' AS JSON)),
   ('agents.stats_min_group',          CAST('5' AS JSON));
@@ -1628,13 +1694,13 @@ INSERT INTO agents (id, agent_key, audience, is_system) VALUES
   (6, 'ops-analyst',     'admin', 1),
   (7, 'yahaha-captain',  'child', 1);
 INSERT INTO agent_versions (id, agent_id, audience, version_no, name, description, allowed_tools, monthly_budget_fen) VALUES
-  (1, 1, 'admin', 1, '课程设计师', '根据资料分析单词、句型与知识点，按模板生成课程草稿，按要求重写单题；只写草稿。',
+  (1, 1, 'admin', 1, '课程设计师', '根据资料分析单词、句型与知识点，按模板生成整门课程或单个单元的草稿，按要求重写单题；只写草稿。',
      CAST('["materials.read","words.search","templates.read","course.read_draft","course.write_draft","course.rewrite_question"]' AS JSON), 6000),
-  (2, 2, 'admin', 1, '美术设计师', '设计学习伙伴、呀哈哈款式与课程配图，保持统一画风；全部原创，只写草稿素材。',
+  (2, 2, 'admin', 1, '美术设计师', '设计伙伴、呀哈哈家族款式与课程配图，保持统一画风；全部原创，只写草稿素材。',
      CAST('["image.generate","assets.search","course.read_draft","course.attach_images","pet.write_design","yahaha.write_style"]' AS JSON), 7000),
-  (3, 3, 'admin', 1, '配音师', '为伙伴台词、呀哈哈叫声与课程对话分配声音与音高，用本机 Piper 生成试听音频。',
+  (3, 3, 'admin', 1, '配音师', '为伙伴台词、呀哈哈家族叫声与课程对话分配声音与音高，用本机 Piper 生成试听音频。',
      CAST('["tts.synthesize","assets.search","course.read_draft","course.assign_voices","pet.write_voice","yahaha.write_voice"]' AS JSON), 500),
-  (4, 4, 'admin', 1, '活动策划', '把一句话活动想法填成投放规则表单并估算影响；规则须管理员确认后生效。',
+  (4, 4, 'admin', 1, '活动策划', '把一句话活动想法填成投放规则表单并估算影响；规则须系统管理员确认后生效。',
      CAST('["rules.read","styles.read","courses.list","rule.write_draft","rule.estimate_impact"]' AS JSON), 1000),
   (5, 5, 'admin', 1, '质检员', '检查课程、伙伴、款式与规则草稿：自动检查、儿童安全与原创性，写质检报告；不能发布。',
      CAST('["course.read_draft","course.run_checks","assets.read","pet.read_design","yahaha.read_style","rules.read","qa.write_report"]' AS JSON), 2000),

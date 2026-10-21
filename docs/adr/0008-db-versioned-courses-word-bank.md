@@ -1,6 +1,6 @@
 # ADR 0008：课程入库并版本化，共享词库
 
-- 状态：已接受（取代 ADR 0003 的“内容即代码”部分）
+- 状态：已接受（取代 ADR 0003 的“内容即代码”部分；由 ADR 0016 修订：增加单元层）
 - 日期：2026-10-21
 - 依据：2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）
 
@@ -11,6 +11,7 @@ ADR 0003 把课程放在仓库 `content/`，改内容必须走一次发布。新
 - 课程存在数据库：`courses`（身份）+ `course_drafts`（草稿，每门课最多一份未完成）+ `course_versions`（已发布版本，只追加）+ `levels` / `questions` / `question_answers`（随版本只追加）。
 - **已发布版本不可修改**：应用数据库账号对已发布表只有 SELECT、INSERT（已实测 UPDATE/DELETE 被拒）；勘误 = 新草稿 → 自动检查（K1–K12）→ 审核 → 发布新版本，`courses.current_version_id` 切换。
 - 进行中的作答固定在开始时的版本；进度按 `(course_id, level_key)` 跨版本保留。
+  - **修订（[ADR 0016](0016-unit-layer.md)，2026-10-21）**：课程与关卡之间增加单元层（`units`，随版本只追加）；`level_key` 改为单元内唯一，进度键改为 `(course_id, unit_key, level_key)`；自动检查增至 K1–K13。
 - 共享词库 `words` / `word_senses`：同学科同拼写只有一个词；义项 ID 稳定、释义不可改（列级授权），复习条目绑定义项，因此多个课程复用同一个词时复习不重复。
 - 题目拆为 `questions.visible`（CHECK 拒绝答案字段）与 `question_answers`；答案只在服务端判分时读取，选项每次下发时用 `crypto.randomInt` 打乱。
 - 示例课程以 JSON 文件放在仓库（现为 `seeds/samples/`，ADR 0015 由 `content/` 改名），用 `xingya course:import` 导入为草稿（重复导入不产生重复草稿），再走同一检查与发布流程。
