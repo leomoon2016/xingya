@@ -94,7 +94,7 @@
 | K12 | 关卡场景：每关有 3 个藏匿点定义（`kind` 属于场景允许的种类，坐标在 0–1） |
 
 ### 7.5 发布流程
-1. 草稿 `in_review` → 审核人点“发布”（必须已完成学生视角试玩；单管理员时允许自审，见[开放问题](../01-requirements/open-questions.md) Q9）→ 状态 `publishing`，入队 `publish_audio` 任务（本机进程类，费用 0）。
+1. 草稿 `in_review` → 审核人点“发布”（学生视角试玩为可选项，不作为发布前提；单管理员时允许自审，见[开放问题](../01-requirements/open-questions.md) Q9）→ 状态 `publishing`，入队 `publish_audio` 任务（本机进程类，费用 0）。
 2. 任务：收集所有需要发音的文本（新词 `text`、`listen_choose`/`spell`/`read_aloud`/对话/绘本的文本）→ 对每段计算 `sha256(voiceId + 规范化文本 + 参数)`，已有同哈希素材直接复用 → 否则以一次性进程运行 Piper（`systemd-run --user --scope -p MemoryMax=350M /opt/xingya/piper/bin/piper --model <voice>`）→ ffmpeg 编码单声道 48 kbps MP3 → 上传 OSS `pub/audio/<hash>.mp3` → 写 `assets`。草稿引用的图片素材复制到 `pub/` 并把 `visibility` 改为 `public`。
 3. 任务成功后在**一个事务**内：`SELECT courses … FOR UPDATE` → 插入 `course_versions`（`version_no + 1`）、`levels`、`questions`、`question_answers` → 草稿中的候选词与义项从 `draft` 转为 `active` → `UPDATE courses SET current_version_id = 新版本` → 草稿 `published` → 写审计。
 4. 任务失败（重试 3 次后）：草稿回到 `in_review` 并显示失败原因；课程当前版本不变；已上传的素材保留，下次复用。
