@@ -1,6 +1,6 @@
 # 里程碑 W1–2：骨架与发布流水线
 
-对应 [路线图](../../docs/02-solution/roadmap.md) W1–2 行：单仓库结构（含独立后台应用外壳与 `packages/ui` 主题，ADR 0015）、模块边界检查、平台层、`0001` 迁移、`xingya seeds:apply`、CI 五个阶段（含“孩子端产物不含后台代码”检查）、服务器 bootstrap（含 Piper 与声音模型）、OSS 桶与 CDN、Nginx 主站与后台两个站点（HTTPS、两套 CSP）、备份与告警、`/api/v1/health` 部署成功。
+对应 [路线图](../../docs/02-solution/roadmap.md) W1–2 行：单仓库结构（含独立后台应用外壳与 `packages/ui` 主题，ADR 0015；主题含断点与触控目标令牌，孩子端以平板和电脑横屏为主、手机竖屏可用，见 nfr §8.4）、模块边界检查、平台层、`0001` 迁移、`xingya seeds:apply`、CI 五个阶段（含“孩子端产物不含后台代码”检查）、服务器 bootstrap（含 Piper 与声音模型）、OSS 桶与 CDN、Nginx 主站与后台两个站点（HTTPS、两套 CSP）、备份与告警、`/api/v1/health` 部署成功。
 
 完成标准：发布包部署到服务器，`/api/v1/health` 返回新版本；ICP 备案完成前通过 SSH 端口转发验证（备案是项目负责人本人的步骤）。
 
