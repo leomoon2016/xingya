@@ -6,9 +6,11 @@
 - `english/grade-1/`：少量示例课程，用 `xingya course:import` 导入为**草稿**，再走审核与发布。
 - `shop/`：商店装扮的初始数据（首次部署时导入，之后在后台维护）。
 - `phrases/`：跨家庭预设短语与表情白名单，随 api 打包。
-- `safety/`：聊天过滤分类词表与规则、AI 提示词禁止词表，随 api 打包。
+- `safety/`：聊天过滤分类词表与规则、AI 提示词禁止词表、AI 角色系统守则 `agent-guard.md`、儿童安全测试集，随 api 打包。
 - `avatars/`：孩子可选的原创头像清单，随 api 打包（图片在 OSS/CDN）。
+- `skills/`：默认技能（SKILL.md 文件夹格式，无可执行代码），由 `xingya skills:seed` 导入为草稿后在后台维护（第 10 部分，ADR 0014）。
+- `agents/`：默认 AI 角色的技能挂载 `defaults.json`，供 `xingya skills:seed` 使用。
 
 全部由 `tools/validate-content` 在 CI 中校验。
 
-**是否上服务器**：间接。没有课程包、部署时不导入内容；`templates/`、`phrases/`、`safety/`、`avatars/` 编译进 api 产物；示例课程与装扮初始数据只在需要时由运维命令导入。图片与音频素材在阿里云 OSS，经 CDN 提供。
+**是否上服务器**：间接。没有课程包、部署时不导入内容；`templates/`、`phrases/`、`safety/`、`avatars/` 编译进 api 产物；示例课程、装扮初始数据与默认技能只在需要时由运维命令导入。图片与音频素材在阿里云 OSS，经 CDN 提供。

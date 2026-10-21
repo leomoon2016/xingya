@@ -76,6 +76,24 @@ GRANT SELECT, INSERT, UPDATE ON xingya.child_controls     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.usage_days         TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.daily_reports      TO 'xingya_app_role';
 GRANT SELECT, UPDATE         ON xingya.system_settings    TO 'xingya_app_role';
+-- (f) Skill 与 AI 角色（studio 2b 节）：版本内容只能插入；已有版本只能改状态与审核字段
+GRANT SELECT, INSERT ON xingya.skills               TO 'xingya_app_role';
+GRANT UPDATE (status, current_version_id, version) ON xingya.skills TO 'xingya_app_role';            -- skill_key、audience 不可改
+GRANT SELECT, INSERT ON xingya.skill_versions       TO 'xingya_app_role';
+GRANT UPDATE (status, reviewed_by_admin_id, reviewed_at, safety_reviewed_by_admin_id, safety_reviewed_at, published_at)
+  ON xingya.skill_versions TO 'xingya_app_role';                                                        -- 提示词、模式、工具白名单不可改
+GRANT SELECT, INSERT ON xingya.skill_allowed_agents TO 'xingya_app_role';
+GRANT UPDATE (revoked_at, revoked_by_admin_id) ON xingya.skill_allowed_agents TO 'xingya_app_role';  -- 撤销而不删除
+GRANT SELECT, INSERT ON xingya.agents               TO 'xingya_app_role';
+GRANT UPDATE (status, current_version_id, version) ON xingya.agents TO 'xingya_app_role';            -- agent_key、audience 不可改
+GRANT SELECT, INSERT ON xingya.agent_versions       TO 'xingya_app_role';
+GRANT UPDATE (status, reviewed_by_admin_id, reviewed_at, safety_reviewed_by_admin_id, safety_reviewed_at, published_at)
+  ON xingya.agent_versions TO 'xingya_app_role';
+GRANT SELECT, INSERT ON xingya.agent_skills         TO 'xingya_app_role';                              -- 随角色版本不可改
+GRANT SELECT, INSERT, UPDATE ON xingya.agent_budget_months TO 'xingya_app_role';
+GRANT SELECT, INSERT, UPDATE ON xingya.quick_tasks         TO 'xingya_app_role';                       -- 归档而不删除
+GRANT SELECT, INSERT, UPDATE ON xingya.agent_runs          TO 'xingya_app_role';
+GRANT SELECT, INSERT, DELETE ON xingya.agent_run_steps     TO 'xingya_app_role';                       -- 不可改；180 天保留期后删除
 -- (e) 可删（会话、令牌、过期数据清理、取消覆盖/屏蔽、未完成作答、资料）
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.sessions             TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.auth_tokens          TO 'xingya_app_role';

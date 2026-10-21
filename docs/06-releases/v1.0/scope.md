@@ -5,9 +5,11 @@
 
 ## 包含
 
-v1.0 包含 [01-requirements](../../01-requirements) 中十一个模块（family、studio、content、learning、stars、companion、discovery、social、chat、controls、reports）的全部需求，验收标准见 [PRD §1.4](../../01-requirements/PRD.md#14-成功标准上线验收)（S1–S10），首发内容范围见 [课程模型 §7.6](../../03-design/course-model.md#76-首发内容)，排期与削减顺序见 [里程碑 §11](../../02-solution/roadmap.md)（约 19 周）。
+v1.0 包含 [01-requirements](../../01-requirements) 中十一个模块（family、studio、content、learning、stars、companion、discovery、social、chat、controls、reports）的全部需求，验收标准见 [PRD §1.4](../../01-requirements/PRD.md#14-成功标准上线验收)（S1–S11），首发内容范围见 [课程模型 §7.6](../../03-design/course-model.md#76-首发内容)，排期与削减顺序见 [里程碑 §11](../../02-solution/roadmap.md)（约 20.5 周）。
 
 2026-10-21 设计变更（用户已批准，见 [changes.md](changes.md)）后，以下内容**纳入** v1.0：课程存数据库并版本化、后台编辑与审核发布；共享词库；课程资料上传与 AI 生成课程；学习伙伴（碎片作为第二种货币、领养、营地、成长）；呀哈哈发现（藏匿点、图鉴、投放规则、AI 一句话填写规则）；后台 AI 工作室（伙伴、呀哈哈、课程、规则）；发布时一次性生成发音与伙伴台词（含变调）；OSS + CDN 素材存储。
+
+第 10 部分“Skill 管理与 AI 角色”（用户已批准，见 [changes.md](changes.md)；需求 [§4.10](../../01-requirements/modules/agents.md)）同样**纳入** v1.0：技能（数据库版本化、SKILL.md 导入导出、无可执行代码、强制儿童安全与原创规则）；技能库后台（新建、导入、编辑即新版本、审核发布、回滚、试运行台、统计、启用停用、审计）；7 个默认 AI 角色（课程设计师、美术设计师、配音师、活动策划、质检员、运营分析师、呀哈哈队长）；角色的技能配置（挂载/卸下、固定版本或跟随最新、参数覆盖、优先级、技能侧白名单、随角色版本化）；角色月度预算；角色执行器（studio，MySQL 队列，≤ 20 步，超时）；多角色流水线；一句话框与 `@角色`；任务历史克隆重跑与快捷任务。原有的 AI 课程、伙伴、款式、规则流程改由角色 + 技能执行；呀哈哈队长成为带技能的儿童角色。
 
 ## 1.5 非目标（明确不做，YAGNI）
 - 计费、订阅、支付、机构/学校/班级、多组织。
@@ -25,3 +27,4 @@ v1.0 包含 [01-requirements](../../01-requirements) 中十一个模块（family
 - 自适应难度、知识图谱、诊断小测、亲子合作任务（以后可基于现有数据加）。
 - 多实例部署、读写分离、缓存集群、独立消息队列（任务队列用 MySQL，见 [ADR 0009](../../adr/0009-studio-mysql-job-queue.md)）。
 - 第三方 IP 形象（任天堂等）——全部原创，提示词自动禁止。
+- 技能中的可执行代码、插件、脚本执行、外部工具服务器（如 MCP）、独立 Agent 框架；AI 自动发布或上架任何内容；呀哈哈队长的聊天记忆或服务端对话存储；面向家长或孩子的自定义角色（v1.0 只有呀哈哈队长一个面向孩子的角色）。

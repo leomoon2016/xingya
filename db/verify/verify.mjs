@@ -38,7 +38,9 @@ await root.query('DROP DATABASE xingya');
 await root.query(SQL);
 const fp2 = await fingerprint(); const c2 = await counts();
 ok('从空库应用两次结构指纹一致', fp1 === fp2, `${fp1.slice(0, 12)} / ${fp2.slice(0, 12)}`);
-ok('表数=55', c2.tables === 55, JSON.stringify(c2));
+ok('表数=65', c2.tables === 65, JSON.stringify(c2));
+{ const [miss] = await root.query(`SELECT table_name t FROM information_schema.tables WHERE table_schema='xingya' AND table_name NOT IN (SELECT Table_name FROM mysql.tables_priv WHERE Db='xingya' AND User='xingya_app_role')`);
+  ok('授权全覆盖：每张表都有应用角色授权', miss.length === 0, JSON.stringify(miss)); }
 
 // 2) 账号：解锁并设置测试口令（生产由引导脚本从密钥文件读取）
 await root.query(`ALTER USER 'xingya_app'@'localhost' IDENTIFIED BY 'test-app-pw-1' ACCOUNT UNLOCK`);
@@ -78,14 +80,14 @@ await expectOk('家庭设备 + PIN 会话', app, `INSERT INTO family_devices (id
   INSERT INTO sessions (token_hash,principal,family_id,child_id,family_device_id,login_method,expires_at) VALUES (UNHEX(SHA2('t3',256)),'child',1,1,1,'pin',NOW()+INTERVAL 8 HOUR)`);
 
 // 5) AI 工作室：任务队列并发上限、本机进程互斥、预算、素材
-const job = (id, st, slot, local = 0) => `INSERT INTO ai_jobs (id,kind,status,running_slot,needs_local,params,budget_month,started_at) VALUES (${id},'pet_candidates','${st}',${slot},${local},'{}','2026-10',${st === 'running' ? 'NOW(3)' : 'NULL'})`;
+const job = (id, st, slot, local = 0) => `INSERT INTO ai_jobs (id,kind,status,running_slot,needs_local,params,budget_month,started_at) VALUES (${id},'agent_run','${st}',${slot},${local},'{}','2026-10',${st === 'running' ? 'NOW(3)' : 'NULL'})`;
 await expectOk('任务队列：两个运行中任务（槽位 1、2）', app, `${job(1, 'running', 1, 1)}; ${job(2, 'running', 2, 0)}`);
 await expectErr('任务队列：第 3 个并发任务被拒（槽位唯一）', app, job(3, 'running', 1), [], ['ER_DUP_ENTRY']);
 await expectErr('任务队列：槽位只能是 1 或 2', app, job(3, 'running', 3), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('任务队列：运行中必须占槽位', app, job(3, 'running', 'NULL'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await app.query(`UPDATE ai_jobs SET status='succeeded', running_slot=NULL, finished_at=NOW(3) WHERE id=2`);
 await expectErr('任务队列：本机进程类任务同时最多 1 个', app, job(3, 'running', 2, 1), [], ['ER_DUP_ENTRY']);
-await expectErr('CHECK：实际费用不得超过预估', app, `INSERT INTO ai_jobs (kind,params,budget_month,estimated_cost_fen,actual_cost_fen) VALUES ('course_generate','{}','2026-10',100,101)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：实际费用不得超过预估', app, `INSERT INTO ai_jobs (kind,params,budget_month,estimated_cost_fen,actual_cost_fen) VALUES ('agent_run','{}','2026-10',100,101)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await app.query(`INSERT INTO ai_budget_months (budget_month,cap_fen,reserved_fen,spent_fen) VALUES ('2026-10',20000,500,1000)`);
 await expectErr('CHECK：预留 + 已花费 不得超过月度预算', app, `UPDATE ai_budget_months SET reserved_fen=reserved_fen+19000 WHERE budget_month='2026-10'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('素材入库', app, `INSERT INTO assets (id,kind,oss_key,sha256,mime,bytes,source,provider,prompt) VALUES (1,'image','pub/a1.webp',UNHEX(SHA2('a1',256)),'image/webp',20000,'ai_image','img','apple, original character'),(2,'audio','pub/a2.mp3',UNHEX(SHA2('a2',256)),'audio/mpeg',8000,'tts','piper',NULL)`);
@@ -287,6 +289,69 @@ await expectErr('CHECK：作答有效期 30–720 分钟', app, `UPDATE system_s
 await expectErr('CHECK：系统设置键白名单（migrator 也不能写入未知键）', mig, `INSERT INTO system_settings (setting_key,value) VALUES ('evil.key','1')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('app 可把全局概率改为 25%', app, `UPDATE system_settings SET value=CAST('25' AS JSON), version=version+1 WHERE setting_key='discovery.spot_probability_pct'`);
 await expectErr('CHECK：周报去重键', app, `INSERT INTO email_outbox (kind,dedupe_key,to_email,subject,body_html) VALUES ('weekly_report','weekly:1:2026-W43','a@x.com','s','b'),('weekly_report','weekly:1:2026-W43','a@x.com','s','b')`, [], ['ER_DUP_ENTRY']);
+
+// 16b) Skill 与 AI 角色（studio）：版本化技能、技能侧白名单、角色版本与挂载、运行记录、角色预算
+{ const [[d]] = await app.query(`SELECT COUNT(*) n, SUM(audience='admin') a, SUM(audience='child') c, SUM(current_version_id IS NULL) unpub FROM agents`);
+  const [[v]] = await app.query(`SELECT COUNT(*) n, SUM(status='draft') drafts, SUM(monthly_budget_fen) budget FROM agent_versions`);
+  ok('默认 7 个角色（6 管理端 + 呀哈哈队长）由迁移写入，v1 为草稿、未发布，角色预算合计 = 全站默认 ¥200',
+     Number(d.n) === 7 && Number(d.a) === 6 && Number(d.c) === 1 && Number(d.unpub) === 7 && Number(v.drafts) === 7 && Number(v.budget) === 20000, JSON.stringify({ d, v })); }
+await expectErr('CHECK：系统技能 child-safety 不能停用', app, `UPDATE skills SET status='disabled' WHERE skill_key='child-safety'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+const sv = (id, skillId, aud, no, out = '{"type":"object","properties":{"draftId":{"type":"integer"}}}') =>
+  `INSERT INTO skill_versions (id,skill_id,audience,version_no,name,when_to_use,instructions,input_schema,output_schema,allowed_tools,source,content_sha256,created_by_admin_id) VALUES (${id},${skillId},'${aud}',${no},'n','w','steps','{"type":"object"}','${out}','["course.write_draft"]','editor',UNHEX(SHA2('${id}',256)),1)`;
+await expectOk('新建技能与 v1 草稿（管理端、儿童端各一个）', app, `INSERT INTO skills (id,skill_key,audience,created_by_admin_id) VALUES (101,'course-generate','admin',1),(102,'english-practice','child',1);
+  ${sv(1001, 101, 'admin', 1)}; ${sv(1002, 102, 'child', 1, '{"type":"object","properties":{"reply":{"type":"string","maxLength":300}}}')}`);
+await expectErr('CHECK：输出模式必须是 object（结果要能校验）', app, sv(1003, 101, 'admin', 2, '{"type":"string"}'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('复合外键：技能版本的受众必须与技能一致', app, sv(1003, 101, 'child', 2), [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('UNIQUE：同一技能版本号不重复', app, sv(1003, 101, 'admin', 1), [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：发布技能版本必须有审核人', app, `UPDATE skill_versions SET status='published', published_at=NOW(3) WHERE id=1001`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('审核后发布管理端技能并设为当前版本', app, `UPDATE skill_versions SET status='published', published_at=NOW(3), reviewed_by_admin_id=1, reviewed_at=NOW(3) WHERE id=1001; UPDATE skills SET current_version_id=1001 WHERE id=101`);
+await expectErr('CHECK：儿童端技能发布必须另做儿童安全审核', app, `UPDATE skill_versions SET status='published', published_at=NOW(3), reviewed_by_admin_id=1, reviewed_at=NOW(3) WHERE id=1002`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('儿童安全审核后发布儿童端技能', app, `UPDATE skill_versions SET status='published', published_at=NOW(3), reviewed_by_admin_id=1, reviewed_at=NOW(3), safety_reviewed_by_admin_id=1, safety_reviewed_at=NOW(3) WHERE id=1002`);
+await expectErr('权限：已保存的技能版本内容不可改（编辑 = 新版本）', app, `UPDATE skill_versions SET instructions='改过的提示词' WHERE id=1001`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
+await expectErr('权限：技能受众不可改', app, `UPDATE skills SET audience='admin' WHERE id=102`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
+await expectErr('权限：技能不能物理删除', app, `DELETE FROM skills WHERE id=101`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectErr('复合外键：技能当前版本必须属于本技能', app, `UPDATE skills SET current_version_id=1002 WHERE id=101`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectOk('技能侧白名单：允许课程设计师、呀哈哈队长', app, `INSERT INTO skill_allowed_agents (skill_id,agent_id,audience,added_by_admin_id) VALUES (101,1,'admin',1),(102,7,'child',1)`);
+await expectErr('复合外键：儿童端技能不能进管理端角色的白名单（受众一致）', app, `INSERT INTO skill_allowed_agents (skill_id,agent_id,audience,added_by_admin_id) VALUES (102,1,'child',1)`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('权限：白名单只能撤销不能删除', app, `DELETE FROM skill_allowed_agents WHERE skill_id=101`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectOk('新的角色版本（课程设计师 v2）并挂载技能（固定 v1、覆盖参数、优先级 1）', app, `INSERT INTO agent_versions (id,agent_id,audience,version_no,name,description,allowed_tools,monthly_budget_fen,based_on_version_id,created_by_admin_id) VALUES (101,1,'admin',2,'课程设计师','d','["course.write_draft"]',6000,1,1);
+  INSERT INTO agent_skills (agent_version_id,agent_id,skill_id,pinned_skill_version_id,priority,overrides) VALUES (101,1,101,1001,1,'{"levels":3}')`);
+await expectErr('复合外键：挂载的技能必须在技能侧白名单中', app, `INSERT INTO agent_skills (agent_version_id,agent_id,skill_id,priority) VALUES (101,1,1,2)`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('复合外键：固定的版本必须属于该技能', app, `INSERT INTO agent_skills (agent_version_id,agent_id,skill_id,pinned_skill_version_id,priority) VALUES (7,7,102,1001,1)`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectOk('呀哈哈队长 v1 挂载英语陪练（跟随最新发布）', app, `INSERT INTO agent_skills (agent_version_id,agent_id,skill_id,priority) VALUES (7,7,102,2)`);
+await expectErr('UNIQUE：同一角色版本内优先级不重复', app, `INSERT INTO skill_allowed_agents (skill_id,agent_id,audience) VALUES (1,7,'child'); INSERT INTO agent_skills (agent_version_id,agent_id,skill_id,priority) VALUES (7,7,1,2)`, [], ['ER_DUP_ENTRY']);
+await expectErr('权限：已保存角色版本的技能挂载不可改（改 = 新版本）', app, `UPDATE agent_skills SET priority=3 WHERE agent_version_id=101`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectErr('CHECK：发布角色版本必须有审核人', app, `UPDATE agent_versions SET status='published', published_at=NOW(3) WHERE id=101`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('审核发布课程设计师 v2 并切为当前版本', app, `UPDATE agent_versions SET status='published', published_at=NOW(3), reviewed_by_admin_id=1, reviewed_at=NOW(3) WHERE id=101; UPDATE agents SET current_version_id=101, version=version+1 WHERE id=1`);
+await expectErr('CHECK：儿童角色发布必须另做儿童安全审核', app, `UPDATE agent_versions SET status='published', published_at=NOW(3), reviewed_by_admin_id=1, reviewed_at=NOW(3) WHERE id=7`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('复合外键：角色当前版本必须属于本角色', app, `UPDATE agents SET current_version_id=7 WHERE id=1`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('权限：角色受众不可改', app, `UPDATE agents SET audience='child' WHERE id=1`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
+await expectOk('角色月度预算（在全站预算月份之内）', app, `INSERT INTO agent_budget_months (agent_id,budget_month,cap_fen,reserved_fen) VALUES (1,'2026-10',6000,5000)`);
+await expectErr('CHECK：角色预留 + 已花费不得超过角色月度预算', app, `UPDATE agent_budget_months SET reserved_fen=reserved_fen+2000 WHERE agent_id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('外键：角色预算月份必须已有全站预算', app, `INSERT INTO agent_budget_months (agent_id,budget_month,cap_fen) VALUES (1,'2026-12',100)`, [], ['ER_NO_REFERENCED_ROW_2']);
+const run = (id, extra) => `INSERT INTO agent_runs (id,kind,agent_id,agent_version_id,instruction,input,budget_month,created_by_admin_id${extra ? ',' + extra[0] : ''}) VALUES (${id},'task',1,101,'给三单元生成单词闯关课','{}','2026-10',1${extra ? ',' + extra[1] : ''})`;
+await expectOk('单角色任务运行记录（课程设计师）', app, run(1));
+await expectErr('复合外键：运行记录只能用管理端角色（孩子对话不进入运行记录）', app, `INSERT INTO agent_runs (kind,agent_id,agent_version_id,instruction,input,budget_month,created_by_admin_id) VALUES ('task',7,7,'x','{}','2026-10',1)`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('CHECK：工具循环最多 20 步', app, run(2, ['step_count', 21]), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：运行实际费用不得超过预估', app, run(2, ['estimated_cost_fen,actual_cost_fen', '10,11']), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：流水线最多 6 步', app, `INSERT INTO agent_runs (kind,plan,instruction,input,budget_month,created_by_admin_id) VALUES ('pipeline','[1,2,3,4,5,6,7]','x','{}','2026-10',1)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('多角色流水线 + 第 1 步', app, `INSERT INTO agent_runs (id,kind,plan,instruction,input,budget_month,created_by_admin_id,status) VALUES (10,'pipeline','[{"agentKey":"course-designer"},{"agentKey":"art-designer"},{"agentKey":"voice-artist"},{"agentKey":"qa-reviewer"}]','三单元完整课程','{}','2026-10',1,'waiting');
+  INSERT INTO agent_runs (id,kind,agent_id,agent_version_id,parent_run_id,step_no,instruction,input,budget_month,created_by_admin_id) VALUES (11,'pipeline_step',1,101,10,1,'x','{}','2026-10',1)`);
+await expectErr('UNIQUE：流水线同一步只有一条运行', app, `INSERT INTO agent_runs (kind,agent_id,agent_version_id,parent_run_id,step_no,instruction,input,budget_month,created_by_admin_id) VALUES ('pipeline_step',1,101,10,1,'x','{}','2026-10',1)`, [], ['ER_DUP_ENTRY']);
+await expectOk('克隆历史任务重跑', app, run(3, ['cloned_from_run_id', 1]));
+await expectOk('运行步骤记录', app, `INSERT INTO agent_run_steps (run_id,step_no,kind,model,status,latency_ms,cost_fen) VALUES (1,1,'route','m','ok',300,1); INSERT INTO agent_run_steps (run_id,step_no,kind,tool_name,status,latency_ms) VALUES (1,2,'tool','course.write_draft','ok',80)`);
+await expectErr('CHECK：步骤号不超过 20', app, `INSERT INTO agent_run_steps (run_id,step_no,kind,model,status,latency_ms) VALUES (1,21,'llm','m','ok',1)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：工具步骤必须记录工具名', app, `INSERT INTO agent_run_steps (run_id,step_no,kind,status,latency_ms) VALUES (1,3,'tool','ok',1)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('权限：运行步骤不可改', app, `UPDATE agent_run_steps SET status='error' WHERE run_id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectOk('技能试运行（样例输入）', app, `INSERT INTO agent_runs (kind,skill_version_id,instruction,input,budget_month,created_by_admin_id) VALUES ('test',1002,'试运行','{"text":"hello"}','2026-10',1)`);
+await expectOk('快捷任务：单角色与流水线', app, `INSERT INTO quick_tasks (name,page,target,agent_id,instruction,created_by_admin_id) VALUES ('重写难题','courses','agent',1,'把这一题改简单',1);
+  INSERT INTO quick_tasks (name,page,target,plan,instruction,created_by_admin_id) VALUES ('整课流水线','courses','pipeline','[{"agentKey":"course-designer"},{"agentKey":"qa-reviewer"}]','x',1)`);
+await expectErr('复合外键：快捷任务不能指向儿童角色', app, `INSERT INTO quick_tasks (name,page,target,agent_id,instruction,created_by_admin_id) VALUES ('聊天','courses','agent',7,'x',1)`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('CHECK：快捷流水线至少 2 步', app, `INSERT INTO quick_tasks (name,page,target,plan,instruction,created_by_admin_id) VALUES ('单步','courses','pipeline','[{"agentKey":"qa-reviewer"}]','x',1)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('聊天元数据记录儿童角色版本与费用', app, `INSERT INTO ai_chat_usage (family_id,principal,child_id,client_request_id,local_date,model,input_chars,agent_version_id,cost_fen) VALUES (1,'child',1,?,'2026-10-21','m',10,7,1)`, [uuid(40)]);
+await expectErr('复合外键：聊天只能使用儿童角色版本', app, `INSERT INTO ai_chat_usage (family_id,principal,child_id,client_request_id,local_date,model,input_chars,agent_version_id) VALUES (1,'child',1,?,'2026-10-21','m',10,101)`, [uuid(41)], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('CHECK：工具循环上限设置不超过 20 步', app, `UPDATE system_settings SET value=JSON_SET(value,'$.max_steps',21) WHERE setting_key='agents.limits'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：运营分析最小分组 3–50', app, `UPDATE system_settings SET value=CAST('1' AS JSON) WHERE setting_key='agents.stats_min_group'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 
 // 17) 角色可重复执行（第二次应用已覆盖），账号锁定状态
 const [[lk]] = await root.query(`SELECT COUNT(*) n FROM mysql.user WHERE user IN ('xingya_app_role','xingya_migrator_role') AND account_locked='Y'`);

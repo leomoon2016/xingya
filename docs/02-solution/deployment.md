@@ -1,7 +1,7 @@
 # 部署与运维
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../README.md)）。
-> 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）：素材改存阿里云 OSS 并经 CDN 提供；音频在课程发布时由后台任务以一次性进程运行 Piper 生成；部署不再导入课程包；内存预算加入一次性 Piper 进程。
+> 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../06-releases/v1.0/changes.md)）：素材改存阿里云 OSS 并经 CDN 提供；音频在课程发布时由后台任务以一次性进程运行 Piper 生成；部署不再导入课程包；内存预算加入一次性 Piper 进程。第 10 部分：AI 角色执行器在服务进程内，部署后一次性 `xingya skills:seed`。
 
 
 ## 9. 部署与运维
@@ -30,6 +30,7 @@
 5. `deploy`（仅 main，GitHub Environment 保护）：SSH（专用部署密钥，固定 known_hosts）上传发布包到 `/opt/xingya/releases/<ts-version>/`（`api/`、`web/` 两个子目录）→ `xingya migrate`（migrator 账号，按版本号应用 `db/migrations` 中未应用的文件，校验已应用文件的 checksum）→ root 执行 `db/roles.sql`（幂等，补齐新表授权）→ 同步前端静态文件 → 切换 `/opt/xingya/current` 软链接 → `systemctl restart xingya` → 30 秒内 `/api/v1/health` 返回新版本，否则切回上一个软链接并重启、流水线失败。
 - 迁移只前进，并遵守“先扩展、后收缩”：任何迁移都必须与上一个发布的代码兼容，回滚只回代码不回库。
 - 部署**不导入任何内容**：课程、伙伴、呀哈哈款式在后台制作与发布，存在数据库与 OSS；发布新代码不影响已发布内容。
+- 技能与 AI 角色（第 10 部分）：角色执行器在 xingya 服务进程内运行（属于“任务执行器”，不新增进程或内存预算；技能里没有可执行代码，不会启动任何子进程）。系统守则 `content/safety/agent-guard.md` 与工具目录随 api 发布包更新。默认技能只在**首次部署后**由运维执行一次 `xingya skills:seed`（migrator 账号，幂等：已存在的技能不覆盖，只导入缺失的 v1 草稿与白名单），之后技能与角色只在后台修改；部署不会覆盖后台的修改。
 - 首次部署：`deploy/scripts/bootstrap.sh`（root 执行一次）安装 Node 24、MySQL 8.4、Nginx、ffmpeg，安装 Piper 到 `/opt/xingya/piper/bin` 与声音模型到 `/opt/xingya/piper/voices`（校验 SHA-256），创建 `xingya` 系统用户（`loginctl enable-linger xingya`）、目录（含 `/var/lib/xingya/tmp`）、swap、systemd 单元，执行 `db/migrations/0001_init.sql` 第 0 段（建库）与 `db/roles.sql`、设置账号口令；之后运行 `xingya admin:create`、`xingya shop:import`，可选 `xingya course:import` 导入示例课程草稿。
 
 ### 9.2a 对象存储与 CDN（阿里云 OSS）

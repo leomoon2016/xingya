@@ -10,14 +10,14 @@
 
 yahaha_sets, yahaha_styles, drop_rules, hiding_spots, yahaha_finds
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单55-张)。审计写入 family 的 `audit_events`（`target_type = 'drop_rule' | 'yahaha_style' | 'discovery_settings'`），没有单独的审计表。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)。审计写入 family 的 `audit_events`（`target_type = 'drop_rule' | 'yahaha_style' | 'discovery_settings'`），没有单独的审计表。
 
 ## 边界
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md#34-模块与边界规则) 边界规则）；`repo.ts` 只访问上面列出的表。
 - 计划文件：`apps/api/src/modules/discovery/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`、`*.test.ts`。
 - 依赖：stars（碎片与奖励星）、content（课程/关卡范围校验、藏匿点定义）、studio（款式设计、规则填写任务）、family（审计）。被 learning 调用 `placeSpotsInTx`。
-- 向 studio 注册任务处理器：`style_candidates`、`style_art`（关键帧）、`style_voice`（叫声）、`rule_parse`（一句话 → 规则结构）。
+- 款式设计与规则填写由 AI 角色执行（美术设计师 `yahaha-style-design`、配音师 `yahaha-voice`、质检员 `content-qa`、活动策划 `drop-rule-fill` / `campaign-plan`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`styles.read`、`yahaha.write_style`（候选与关键帧写入款式草稿）、`yahaha.write_voice`、`yahaha.read_style`、`rules.read`、`rule.write_draft`（只写 RuleSpec 草稿，不生效）、`rule.estimate_impact`。**没有发布、生效类工具**。
 
 ## 接口
 
@@ -32,7 +32,7 @@ getAlbum(child): {sets: [{set, styles: [{style | silhouette, count}]}], total}
 getSettings() / updateSettings(admin, {enabled, probabilityPct, dailyCap, rarityWeights, milestoneBonus} & {version})
 upsertSet / styleDesign…（与伙伴相同的候选 → 选定 → 关键帧 → 动效 → 叫声 → 审核 → 发布）
 updateStyle(admin, id, {rarity, perChildMax, totalStock, status} & {version})
-parseRule(admin, text): {jobId, estimateFen}                 // 结果是 RuleSpec 草稿，不生效
+parseRule(admin, text): {runId, estimateFen}                 // = studio.startTask(活动策划, drop-rule-fill)；结果是 RuleSpec 草稿，不生效
 validateRule(spec): {errors[], restatement, impact, overlaps[]}
 saveRule(admin, spec & {version}) / publishRule / pauseRule / resumeRule
 stats(range): DiscoveryStats

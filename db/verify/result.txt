@@ -1,7 +1,8 @@
 # 验证结果（2026-10-21，临时 MySQL 8.4.6，node db/verify/verify.mjs db/migrations/0001_init.sql db/roles.sql）
 
-PASS  从空库应用两次结构指纹一致  — ab12eef1c3b3 / ab12eef1c3b3
-PASS  表数=55  — {"tables":55,"fks":108,"checks":133,"uniques":54,"generated":12}
+PASS  从空库应用两次结构指纹一致  — b8a54a47ac17 / b8a54a47ac17
+PASS  表数=65  — {"tables":65,"fks":145,"checks":172,"uniques":68,"generated":12}
+PASS  授权全覆盖：每张表都有应用角色授权  — []
 PASS  xingya 账号只有 @localhost（角色除外）  — [{"user":"xingya_app_role","host":"%"},{"user":"xingya_migrator_role","host":"%"},{"user":"xingya_app","host":"localhost"},{"user":"xingya_migrator","host":"localhost"}]
 PASS  migrator 可执行 DDL
 PASS  migrator 建系统管理员
@@ -154,7 +155,58 @@ PASS  CHECK：作答有效期 30–720 分钟  — ER_CHECK_CONSTRAINT_VIOLATED:
 PASS  CHECK：系统设置键白名单（migrator 也不能写入未知键）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_key' is violated.
 PASS  app 可把全局概率改为 25%
 PASS  CHECK：周报去重键  — ER_DUP_ENTRY: Duplicate entry 'weekly:1:2026-W43' for key 'email_outbox.uq_email_outbox_dedupe'
+PASS  默认 7 个角色（6 管理端 + 呀哈哈队长）由迁移写入，v1 为草稿、未发布，角色预算合计 = 全站默认 ¥200  — {"d":{"n":7,"a":"6","c":"1","unpub":"7"},"v":{"n":7,"drafts":"7","budget":"20000"}}
+PASS  CHECK：系统技能 child-safety 不能停用  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_skills_system_active' is violated.
+PASS  新建技能与 v1 草稿（管理端、儿童端各一个）
+PASS  CHECK：输出模式必须是 object（结果要能校验）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_skill_versions_schemas' is violated.
+PASS  复合外键：技能版本的受众必须与技能一致  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`skill_versions
+PASS  UNIQUE：同一技能版本号不重复  — ER_DUP_ENTRY: Duplicate entry '101-1' for key 'skill_versions.uq_skill_versions_no'
+PASS  CHECK：发布技能版本必须有审核人  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_skill_versions_published' is violated.
+PASS  审核后发布管理端技能并设为当前版本
+PASS  CHECK：儿童端技能发布必须另做儿童安全审核  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_skill_versions_safety' is violated.
+PASS  儿童安全审核后发布儿童端技能
+PASS  权限：已保存的技能版本内容不可改（编辑 = 新版本）  — ER_COLUMNACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for column 'instructions' in table 
+PASS  权限：技能受众不可改  — ER_COLUMNACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for column 'audience' in table 'ski
+PASS  权限：技能不能物理删除  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'skills'
+PASS  复合外键：技能当前版本必须属于本技能  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`skills`, CONST
+PASS  技能侧白名单：允许课程设计师、呀哈哈队长
+PASS  复合外键：儿童端技能不能进管理端角色的白名单（受众一致）  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`skill_allowed_
+PASS  权限：白名单只能撤销不能删除  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'skill_allowed_agents'
+PASS  新的角色版本（课程设计师 v2）并挂载技能（固定 v1、覆盖参数、优先级 1）
+PASS  复合外键：挂载的技能必须在技能侧白名单中  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`agent_skills`,
+PASS  复合外键：固定的版本必须属于该技能  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`agent_skills`,
+PASS  呀哈哈队长 v1 挂载英语陪练（跟随最新发布）
+PASS  UNIQUE：同一角色版本内优先级不重复  — ER_DUP_ENTRY: Duplicate entry '7-2' for key 'agent_skills.uq_agent_skills_priority'
+PASS  权限：已保存角色版本的技能挂载不可改（改 = 新版本）  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'agent_skills'
+PASS  CHECK：发布角色版本必须有审核人  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_agent_versions_published' is violated.
+PASS  审核发布课程设计师 v2 并切为当前版本
+PASS  CHECK：儿童角色发布必须另做儿童安全审核  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_agent_versions_safety' is violated.
+PASS  复合外键：角色当前版本必须属于本角色  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`agents`, CONST
+PASS  权限：角色受众不可改  — ER_COLUMNACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for column 'audience' in table 'age
+PASS  角色月度预算（在全站预算月份之内）
+PASS  CHECK：角色预留 + 已花费不得超过角色月度预算  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_agent_budget_cap' is violated.
+PASS  外键：角色预算月份必须已有全站预算  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`agent_budget_m
+PASS  单角色任务运行记录（课程设计师）
+PASS  复合外键：运行记录只能用管理端角色（孩子对话不进入运行记录）  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`agent_runs`, C
+PASS  CHECK：工具循环最多 20 步  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_agent_runs_steps' is violated.
+PASS  CHECK：运行实际费用不得超过预估  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_agent_runs_cost' is violated.
+PASS  CHECK：流水线最多 6 步  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_agent_runs_shape' is violated.
+PASS  多角色流水线 + 第 1 步
+PASS  UNIQUE：流水线同一步只有一条运行  — ER_DUP_ENTRY: Duplicate entry '10-1' for key 'agent_runs.uq_agent_runs_step'
+PASS  克隆历史任务重跑
+PASS  运行步骤记录
+PASS  CHECK：步骤号不超过 20  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_agent_run_steps_no' is violated.
+PASS  CHECK：工具步骤必须记录工具名  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_agent_run_steps_tool' is violated.
+PASS  权限：运行步骤不可改  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'agent_run_steps'
+PASS  技能试运行（样例输入）
+PASS  快捷任务：单角色与流水线
+PASS  复合外键：快捷任务不能指向儿童角色  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`quick_tasks`, 
+PASS  CHECK：快捷流水线至少 2 步  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_quick_tasks_target' is violated.
+PASS  聊天元数据记录儿童角色版本与费用
+PASS  复合外键：聊天只能使用儿童角色版本  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`ai_chat_usage`
+PASS  CHECK：工具循环上限设置不超过 20 步  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_agent_limits' is violated.
+PASS  CHECK：运营分析最小分组 3–50  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_stats_group' is violated.
 PASS  角色本身为锁定账号（不可登录）
 
-结构统计: {"tables":55,"fks":108,"checks":133,"uniques":54,"generated":12}
-合计 155 项，通过 155，失败 0
+结构统计: {"tables":65,"fks":145,"checks":172,"uniques":68,"generated":12}
+合计 207 项，通过 207，失败 0

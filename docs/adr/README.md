@@ -10,10 +10,11 @@
 | [0006](0006-cross-family-social-safeguards.md) | 跨家庭社交带安全护栏 | 已接受 |
 | [0007](0007-family-as-tenant.md) | 以家庭为租户 | 已接受 |
 | [0008](0008-db-versioned-courses-word-bank.md) | 课程入库并版本化，共享词库 | 已接受（取代 ADR 0003 的“内容即代码”部分） |
-| [0009](0009-studio-mysql-job-queue.md) | AI 工作室使用 MySQL 任务队列与月度预算 | 已接受 |
+| [0009](0009-studio-mysql-job-queue.md) | AI 工作室使用 MySQL 任务队列与月度预算 | 已接受（由 ADR 0014 扩展） |
 | [0010](0010-oss-cdn-publish-time-piper.md) | 素材放 OSS + CDN，发布时一次性运行 Piper | 已接受（取代 ADR 0003 的“构建期生成发音”部分） |
 | [0011](0011-fragments-second-currency.md) | 引入碎片作为第二种货币 | 已接受（修订 ADR 0004） |
-| [0012](0012-server-decided-discovery-ai-filled-rules.md) | 呀哈哈由服务器决定，AI 只填写规则表单 | 已接受 |
+| [0012](0012-server-decided-discovery-ai-filled-rules.md) | 呀哈哈由服务器决定，AI 只填写规则表单 | 已接受（由 ADR 0014 扩展：由活动策划角色填写） |
 | [0013](0013-keyframe-motion-template-animation.md) | 伙伴与呀哈哈动画采用“关键帧图 + 动作模板” | 已接受 |
+| [0014](0014-skills-and-agent-roles.md) | 技能入库版本化、AI 角色执行、无可执行代码 | 已接受（扩展 ADR 0009、0012） |
 
 新决策按序号追加；被取代的 ADR 保留，状态改为“已被 ADR NNNN 取代”。

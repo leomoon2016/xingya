@@ -44,7 +44,10 @@
 | 409 | `PLAY_EXPIRED` / `PLAY_INCOMPLETE` / `PLAY_FINISHED` | 作答已过期 / 还有题未作答 / 作答已完成（对 answers 而言） |
 | 409 | `INSUFFICIENT_FRAGMENTS` / `THRESHOLD_NOT_MET` / `DEN_FULL` / `DEN_MAX` | 碎片不足 / 未达领养门槛 / 营地已满 / 已达最大扩建次数 |
 | 409 | `DRAFT_CHECK_FAILED` / `DRAFT_NOT_IN_REVIEW` / `DRAFT_OPEN_EXISTS` | 自动检查未通过 / 草稿不在审核中 / 该课程已有未完成草稿 |
-| 409 | `AI_BUDGET_EXCEEDED` | 本月 AI 预算不足（`details.remainingFen`、`details.estimateFen`） |
+| 409 | `AI_BUDGET_EXCEEDED` | 本月 AI 预算不足（`details.scope = global\|agent`、`details.remainingFen`、`details.estimateFen`） |
+| 409 | `AGENT_NOT_PUBLISHED` / `SKILL_NOT_ALLOWED` | 角色没有已发布版本或已停用 / 技能未把该角色列入白名单、受众不一致、已停用或固定的版本未发布 |
+| 409 | `REVIEW_REQUIRED` | 发布前缺少审核或儿童安全审核（数据库 CHECK 兜底） |
+| 400 | `SKILL_IMPORT_REJECTED` | 导入包不合规：超限、路径穿越、符号链接、未知工具名、模式无法编译（`details.errors[]`） |
 | 409 | `RULE_INVALID` | 投放规则不合法（`details.errors[]`）；数据库 CHECK 兜底 |
 | 400 | `PROMPT_BLOCKED` | 描述命中提示词禁止词表（`details.terms`） |
 | 409 | `INSUFFICIENT_STARS` / `PRICE_CHANGED` / `ALREADY_OWNED` | 星星不足 / 价格已变（`details.currentPrice`）/ 已拥有 |
@@ -57,6 +60,9 @@
 | 429 | `RATE_LIMITED` / `CHAT_QUOTA_EXCEEDED` | 限流 / 今日聊天次数用完 |
 | 500 | `INTERNAL` | 未预期错误 |
 | 503 | `AI_DISABLED` / `AI_UNAVAILABLE` | 全站关闭 / LLM 超时或出错（不扣配额：记录为 error/timeout） |
+| 503 | `AI_BUDGET_EXHAUSTED` | 呀哈哈队长：全站或角色本月预算用完（孩子端友好提示，不扣配额） |
+
+AI 角色运行的失败原因不是 HTTP 错误，而是写在运行记录 `agent_runs.error` 中的代码：`SKILL_OUTPUT_INVALID`（输出不符合技能输出模式，修正后仍失败）、`RUN_STEP_LIMIT`（达到 20 步上限）、`RUN_TIMEOUT`、`RUN_COST_LIMIT`（累计费用将超过预估）、`TOOL_FAILED`、`GUARD_BLOCKED`（安全检查拦截）、`CANCELLED`。
 
 ### 5.3 端点（按模块）
 P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开 = 无需登录。
@@ -189,7 +195,7 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | GET · POST /admin/studio/words · POST /admin/studio/senses/:id/retire · PUT /admin/studio/words/:id/audio · PUT /admin/studio/senses/:id/image | 词库 |
 | GET · POST /admin/studio/courses · POST /admin/studio/courses/:id/drafts | 课程列表、建课程、基于当前版本开草稿 |
 | GET · PATCH /admin/studio/drafts/:id | 草稿（表单数据 + 检查结果，乐观锁） |
-| POST /admin/studio/drafts/:id/analyze · /generate · /questions/:key/rewrite | AI 分析资料 / 按模板生成 / 重写一题（入队） |
+| POST /admin/studio/drafts/:id/analyze · /generate · /questions/:key/rewrite | AI 分析资料 / 按模板生成 / 重写一题（= 课程设计师的角色任务，返回 `runId`） |
 | GET /admin/studio/drafts/:id/preview/:levelKey | 学生视角试玩（不记录） |
 | POST /admin/studio/drafts/:id/submit · /return · /publish | 提交审核 / 退回 / 发布（入队 publish_audio） |
 | GET /admin/studio/courses/:id/versions | 版本历史 |
@@ -199,10 +205,35 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | GET · POST /admin/studio/yahaha/sets · GET · POST /admin/studio/yahaha/styles · 同上设计流程 · PATCH /admin/studio/yahaha/styles/:id | 款式与套组 |
 | GET · PUT /admin/studio/yahaha/settings | 全局开关、概率、每日上限、稀有度权重、里程碑奖励（乐观锁） |
 | GET /admin/studio/yahaha/stats | 统计 |
-| POST /admin/studio/rules/parse | 一句话 → 规则结构（入队 rule_parse） |
+| POST /admin/studio/rules/parse | 一句话 → 规则结构（= 活动策划的角色任务 `drop-rule-fill`，结果是 RuleSpec 草稿） |
 | POST /admin/studio/rules/validate | 校验 + 大白话复述 + 影响估算 + 重叠列表 |
 | GET · POST /admin/studio/rules · PATCH /admin/studio/rules/:id · POST /admin/studio/rules/:id/publish · /pause · /resume | 规则 CRUD 与生命周期（审计） |
 | GET · POST /admin/studio/shop-items · PATCH /admin/studio/shop-items/:id | 装扮 |
+
+**admin/studio · 技能与角色**（第 10 部分；前缀 `/admin/studio`，仅系统管理员 A，需 TOTP 会话；见 [Skill 与 AI 角色 · 模块设计](modules/agents.md)。所有运行类接口先返回预估费用，带 `confirmEstimateFen` 再次提交才开始；AI 只写草稿，发布仍走各业务的审核发布接口）
+
+| 方法 路径 | 说明 |
+| --- | --- |
+| GET · POST /admin/studio/skills | 技能列表（含近 30 天调用、成功率、平均费用与耗时）/ 新建（产生 v1 草稿） |
+| POST /admin/studio/skills/import · GET /admin/studio/skill-versions/:id/export | 导入 SKILL.md 文件夹 ZIP（结果为草稿 + 导入报告；脚本只作惰性文本）/ 导出 ZIP |
+| GET /admin/studio/skills/:id · GET /admin/studio/skills/:id/versions · GET /admin/studio/skill-versions/:id · GET /admin/studio/skill-versions/:a/diff/:b | 详情、版本历史、版本内容、两版本对比 |
+| POST /admin/studio/skills/:id/versions | 保存为新版本（`baseVersionId`；每次编辑 = 新版本） |
+| POST /admin/studio/skill-versions/:id/submit · /review · /safety-review · /publish · /retire | 提交审核 / 审核 / 儿童安全审核（面向孩子或家长的技能必需，附清单与安全测试集结果）/ 发布 / 退役 |
+| POST /admin/studio/skills/:id/rollback | 当前版本指回较早的已发布版本 `{toVersionId}` |
+| PUT /admin/studio/skills/:id/status | 启用 / 停用（系统技能不能停用；乐观锁） |
+| GET · POST /admin/studio/skills/:id/allowed-agents · DELETE /admin/studio/skills/:id/allowed-agents/:agentId | 技能侧角色白名单：列出 / 加入 / 撤销（撤销 = 记 `revoked_at`） |
+| POST /admin/studio/skill-versions/:id/test | 试运行台：样例输入 → 输出、校验结果、步骤、费用、耗时（`kind = test`，计入预算） |
+| GET /admin/studio/skills/:id/stats?from=&to= | 使用统计 |
+| GET · POST /admin/studio/agents · GET /admin/studio/agents/:id · GET /admin/studio/agents/:id/versions | 角色列表 / 新建 / 详情 / 版本历史 |
+| POST /admin/studio/agents/:id/versions | 保存角色新版本：名称、头像、说明、工具、模型、月度预算、技能挂载 `[{skillId, pinnedVersionId 或 null, priority, overrides}]` |
+| POST /admin/studio/agent-versions/:id/review · /safety-review · /publish · POST /admin/studio/agents/:id/rollback | 审核 / 儿童安全审核（儿童角色）/ 发布 / 回滚 |
+| PUT /admin/studio/agents/:id/status · GET /admin/studio/agents/:id/budget/:month | 启用 / 停用；角色当月预算（上限、预留、已花费） |
+| POST /admin/studio/runs | 一句话任务 `{page, instruction, agentKey?, input}`（`@角色` 在 instruction 中解析；多个 `@` = 流水线）；第一次返回 `{agent 或 plan, estimateFen}`，带 `confirmEstimateFen` 才开始 |
+| POST /admin/studio/pipelines | 按模板或自定义 `plan`（2–6 步）开始流水线（同样先预估） |
+| GET /admin/studio/runs?agent=&page=&status= · GET /admin/studio/runs/:id | 任务历史；详情含每一步（流水线含各步进度、费用、耗时） |
+| POST /admin/studio/runs/:id/cancel · /clone · /retry-step | 取消 / 克隆并重跑（可改 instruction 与参数，重新预估）/ 从失败步重试 |
+| GET · POST /admin/studio/quick-tasks · PATCH · DELETE /admin/studio/quick-tasks/:id · POST /admin/studio/quick-tasks/:id/run | 快捷任务（DELETE = 归档）；运行同样先预估 |
+| GET /admin/studio/tools | 内置工具目录（只读：名称、受众、只读/写草稿/生成、注册模块） |
 
 **admin**（前缀 `/admin`）
 
@@ -211,8 +242,8 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | POST /admin/login | 公开 | 用户名 + 密码 + TOTP |
 | GET /admin/reports?status= · GET /admin/reports/:id | A | 举报队列；详情含被举报消息及两人之间前后各 10 条 |
 | POST /admin/reports/:id/resolve | A | `dismiss` / `hide_message` / `disable_cross_family` / `suspend_family` |
-| GET /admin/anomalies | A | 对账不一致（星星、碎片、款式放置数）、发送失败邮件、进程内 5xx 计数、AI 任务失败、预算 ≥ 80%、备份状态 |
-| GET · PUT /admin/settings | A | 系统设置（`ai.*`、`registration.mode`、`companion.*`、`studio.*`、`learning.play_ttl_minutes`、`content.allow_self_review`；乐观锁；`discovery.*` 在工作室页面） |
+| GET /admin/anomalies | A | 对账不一致（星星、碎片、款式放置数）、发送失败邮件、进程内 5xx 计数、AI 任务失败、预算 ≥ 80%（全站与各角色）、备份状态 |
+| GET · PUT /admin/settings | A | 系统设置（`ai.*`、`registration.mode`、`companion.*`、`studio.*`、`learning.play_ttl_minutes`、`content.allow_self_review`、`agents.limits`、`agents.page_routes`、`agents.stats_min_group`；乐观锁；`discovery.*` 在工作室页面） |
 | POST /admin/signup-codes | A | 签发一次性注册码（14 天有效，仅显示一次；可选填邮箱，同时发送注册邀请邮件） |
 | POST /admin/families/:id/suspend · /reactivate | A | 停用/恢复家庭 |
 | GET /health | 公开 | `{ok, version}`（不含敏感信息） |
@@ -242,6 +273,9 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | 处理举报、停用家庭 | — | — | ✓ |
 | 系统设置（AI 开关、模型、注册模式、伙伴/发现/工作室参数）、签发注册码 | — | — | ✓ |
 | AI 工作室：词库、课程草稿/审核/发布、伙伴与款式设计、投放规则、预算、素材 | — | — | ✓（TOTP） |
+| 技能库、AI 角色、任务历史、流水线、快捷任务、一句话框（AI 只写草稿，发布须本人确认） | — | — | ✓（TOTP） |
+| 运营分析师：全站聚合统计（分组 < 5 个孩子不显示） | — | — | ✓（只读聚合，不含任何单个家庭或孩子） |
+| 呀哈哈队长读取“已学的词” | — | 本人（只读，经工具，无参数） | — |
 | 读取题目答案与解析 | — | 只在作答后由服务端返回该题的 | ✓（工作室） |
 | 查看异常与对账 | — | — | ✓ |
 | 访问数据库 | — | — | —（只有运维经 SSH 隧道用 migrator 账号） |

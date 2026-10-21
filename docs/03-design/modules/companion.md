@@ -10,14 +10,14 @@
 
 pet_tiers, pet_tier_stages, pet_species, pet_dens, child_pets
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单55-张)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)。
 
 ## 边界
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md#34-模块与边界规则) 边界规则）；`repo.ts` 只访问上面列出的表。
 - 计划文件：`apps/api/src/modules/companion/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`、`*.test.ts`。
 - 依赖：stars（扣费、学习星累计）、studio（设计任务与素材）、family。被 learning 调用 `addXpInTx`。
-- 向 studio 注册任务处理器：`pet_candidates`（4 张候选）、`pet_stage_art`（阶段图与动作关键帧）、`pet_voice`（台词音频：Piper + ffmpeg 变调，本机进程类）。
+- 伙伴设计由 AI 角色执行（美术设计师 `pet-design`、配音师 `pet-voice`、质检员 `content-qa`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`pet.write_design`（4 张候选、阶段图与动作关键帧写入种类草稿）、`pet.write_voice`（台词音频：Piper + ffmpeg 变调，本机进程类）、`pet.read_design`。**没有上架类工具**，审核上架仍由管理员操作。
 
 ## 接口
 
@@ -34,11 +34,11 @@ addXpInTx(tx, {familyId, childId, amount}): {levelUps: number, newStage?: StageN
 // 后台
 listTiers() / updateTier(admin, id, patch & {version}) / updateStages(admin, tierId, stages[], version)
 createSpeciesDraft(admin, {name, description, styleTemplate}): SpeciesId
-requestCandidates(admin, speciesId, {description, styleTemplate}): {jobId, estimateFen}
+requestCandidates(admin, speciesId, {description, styleTemplate}): {runId, estimateFen}   // = studio.startTask(美术设计师, pet-design)
 chooseBase(admin, speciesId, assetId)
-requestStageArt(admin, speciesId): {jobId, estimateFen}
+requestStageArt(admin, speciesId): {runId, estimateFen}
 setMotions(admin, speciesId, {idle, happy, cheer, extra[]})         // 选择预设动效模板
-requestVoice(admin, speciesId, {voiceId, pitch, lines: {greeting, encourage, levelUp}}): {jobId}
+requestVoice(admin, speciesId, {voiceId, pitch, lines: {greeting, encourage, levelUp}}): {runId}   // 配音师 pet-voice
 submitSpecies / reviewSpecies / publishSpecies(admin, speciesId, {tierId, version}) / unlistSpecies
 ```
 

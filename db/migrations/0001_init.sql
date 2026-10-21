@@ -206,11 +206,11 @@ CREATE TABLE audit_events (                                  -- 只追加
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 2. AI 工作室 studio（4 张：任务队列、素材库、资料库、月度预算）
+-- 2. AI 工作室 studio（14 张：任务队列、素材库、资料库、月度预算 + 2b 节 Skill 与 AI 角色 10 张）
 -- ---------------------------------------------------------------------
 CREATE TABLE ai_jobs (                                       -- MySQL 中的后台任务队列（单进程消费）
   id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  kind                VARCHAR(32)  NOT NULL,                 -- 如 pet_candidates、course_generate、publish_audio、rule_parse
+  kind                VARCHAR(32)  NOT NULL,                 -- agent_run（AI 角色运行，§4.10）、publish_audio、material_extract（系统任务）
   status              ENUM('queued','running','succeeded','failed','cancelled') NOT NULL DEFAULT 'queued',
   running_slot        TINYINT UNSIGNED NULL,                 -- 运行中必须占用 1 或 2 号槽位：数据库保证最多 2 个并发任务
   needs_local         TINYINT(1)   NOT NULL DEFAULT 0,       -- 需要在本机启动 Piper/ffmpeg 一次性进程
@@ -304,6 +304,297 @@ CREATE TABLE materials (                                     -- 课程资料库�
   CONSTRAINT fk_materials_admin FOREIGN KEY (uploaded_by_admin_id) REFERENCES admin_accounts (id),
   CONSTRAINT ck_materials_bytes CHECK (bytes BETWEEN 1 AND 20971520),       -- ≤ 20 MB
   CONSTRAINT ck_materials_text CHECK ((extraction_status = 'done') = (extracted_text IS NOT NULL))
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 2b. Skill 与 AI 角色（studio，10 张；2026-10-21 设计变更 §4.10）
+--   技能 = 数据库中的版本化提示词包（无可执行代码）；角色 = 挂载技能的 AI 角色（每次保存 = 新版本）。
+--   AI 只产出草稿；没有任何“发布”工具，发布永远由管理员在界面确认。
+-- ---------------------------------------------------------------------
+CREATE TABLE agents (                                        -- AI 角色身份；配置在 agent_versions
+  id                  SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  agent_key           VARCHAR(48)  NOT NULL,                 -- 如 course-designer、yahaha-captain；永不复用
+  audience            ENUM('admin','child','parent') NOT NULL,  -- 服务对象；创建后不可改（列级授权）
+  is_system           TINYINT(1)   NOT NULL DEFAULT 0,       -- 迁移写入的 7 个默认角色
+  status              ENUM('active','disabled') NOT NULL DEFAULT 'active',
+  current_version_id  BIGINT UNSIGNED NULL,                  -- 正在使用的已发布版本；NULL = 尚未发布（不能运行）
+  version             INT UNSIGNED NOT NULL DEFAULT 1,
+  created_by_admin_id BIGINT UNSIGNED NULL,                  -- NULL = 迁移写入的默认角色
+  created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_agents_key (agent_key),
+  UNIQUE KEY uq_agents_id_audience (id, audience),           -- 供复合外键：技能与角色的受众必须一致
+  CONSTRAINT fk_agents_admin FOREIGN KEY (created_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_agents_key CHECK (REGEXP_LIKE(agent_key, '^[a-z][a-z0-9]*(-[a-z0-9]+)*$', 'c') AND CHAR_LENGTH(agent_key) BETWEEN 3 AND 48),
+  CONSTRAINT ck_agents_creator CHECK (is_system = 1 OR created_by_admin_id IS NOT NULL)
+) ENGINE=InnoDB;
+
+CREATE TABLE skills (                                        -- 技能身份；内容在 skill_versions
+  id                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  skill_key           VARCHAR(64)  NOT NULL,                 -- 如 course-generate、english-practice；与 SKILL.md 的 name 对应
+  audience            ENUM('admin','child','parent') NOT NULL,  -- 创建后不可改（列级授权）
+  is_system           TINYINT(1)   NOT NULL DEFAULT 0,       -- 系统技能（child-safety）：不能停用
+  status              ENUM('active','disabled') NOT NULL DEFAULT 'active',
+  current_version_id  BIGINT UNSIGNED NULL,                  -- “跟随最新发布”指向的版本；回滚 = 指回较早的已发布版本
+  version             INT UNSIGNED NOT NULL DEFAULT 1,
+  created_by_admin_id BIGINT UNSIGNED NULL,                  -- NULL = 系统技能或 skills:seed 导入的默认技能
+  created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_skills_key (skill_key),
+  UNIQUE KEY uq_skills_id_audience (id, audience),
+  CONSTRAINT fk_skills_admin FOREIGN KEY (created_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_skills_key CHECK (REGEXP_LIKE(skill_key, '^[a-z][a-z0-9]*(-[a-z0-9]+)*$', 'c') AND CHAR_LENGTH(skill_key) BETWEEN 3 AND 64),
+  CONSTRAINT ck_skills_system_active CHECK (is_system = 0 OR status = 'active')   -- 儿童安全技能不能停用
+) ENGINE=InnoDB;
+
+CREATE TABLE skill_versions (                                -- 每次编辑 = 新版本；内容列不可改（列级授权），只改状态与审核
+  id                          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  skill_id                    INT UNSIGNED NOT NULL,
+  audience                    ENUM('admin','child','parent') NOT NULL,   -- 冗余自 skills，复合外键保证一致
+  version_no                  SMALLINT UNSIGNED NOT NULL,
+  name                        VARCHAR(64)  NOT NULL,
+  when_to_use                 VARCHAR(1024) NOT NULL,        -- 何时使用（SKILL.md 的 description）
+  instructions                TEXT         NOT NULL,         -- 提示词与步骤（Markdown；SKILL.md 正文）
+  input_schema                JSON         NOT NULL,         -- JSON Schema：输入
+  output_schema               JSON         NOT NULL,         -- JSON Schema：输出（运行结果必须通过校验）
+  allowed_tools               JSON         NOT NULL,         -- 内置工具白名单（名称数组；不存在“发布”类工具）
+  resources                   JSON         NOT NULL DEFAULT (JSON_ARRAY()),  -- 参考资料 [{name, kind:'text'|'asset', text?|assetId?, inert?}]
+  default_params              JSON         NOT NULL DEFAULT (JSON_OBJECT()), -- 可被角色覆盖的参数及默认值
+  preferred_model             VARCHAR(64)  NULL,             -- NULL = 使用角色或系统设置 ai.model
+  source                      ENUM('editor','import','seed') NOT NULL,
+  import_report               JSON         NULL,             -- 导入时被忽略或作为惰性文本保存的文件（脚本永不执行）
+  content_sha256              BINARY(32)   NOT NULL,
+  based_on_version_id         BIGINT UNSIGNED NULL,
+  status                      ENUM('draft','in_review','published','retired') NOT NULL DEFAULT 'draft',
+  created_by_admin_id         BIGINT UNSIGNED NULL,          -- NULL 仅限 source = seed
+  reviewed_by_admin_id        BIGINT UNSIGNED NULL,
+  reviewed_at                 DATETIME(3)  NULL,
+  safety_reviewed_by_admin_id BIGINT UNSIGNED NULL,          -- 面向孩子/家长的技能：单独的儿童安全审核
+  safety_reviewed_at          DATETIME(3)  NULL,
+  published_at                DATETIME(3)  NULL,
+  created_at                  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_skill_versions_no (skill_id, version_no),
+  UNIQUE KEY uq_skill_versions_skill_id (skill_id, id),
+  KEY ix_skill_versions_status (status),
+  CONSTRAINT fk_skill_versions_skill   FOREIGN KEY (skill_id, audience) REFERENCES skills (id, audience),
+  CONSTRAINT fk_skill_versions_base    FOREIGN KEY (skill_id, based_on_version_id) REFERENCES skill_versions (skill_id, id),
+  CONSTRAINT fk_skill_versions_creator FOREIGN KEY (created_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT fk_skill_versions_review  FOREIGN KEY (reviewed_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT fk_skill_versions_safety  FOREIGN KEY (safety_reviewed_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_skill_versions_no CHECK (version_no >= 1),
+  CONSTRAINT ck_skill_versions_schemas CHECK (JSON_TYPE(input_schema) = 'OBJECT' AND JSON_TYPE(output_schema) = 'OBJECT'
+                                              AND JSON_UNQUOTE(JSON_EXTRACT(output_schema, '$.type')) = 'object'),
+  CONSTRAINT ck_skill_versions_tools CHECK (JSON_TYPE(allowed_tools) = 'ARRAY' AND JSON_LENGTH(allowed_tools) <= 20),
+  CONSTRAINT ck_skill_versions_resources CHECK (JSON_TYPE(resources) = 'ARRAY' AND JSON_LENGTH(resources) <= 20),
+  CONSTRAINT ck_skill_versions_params CHECK (JSON_TYPE(default_params) = 'OBJECT'),
+  CONSTRAINT ck_skill_versions_creator CHECK ((source = 'seed') = (created_by_admin_id IS NULL)),
+  CONSTRAINT ck_skill_versions_published CHECK (status NOT IN ('published','retired')
+                                                OR (published_at IS NOT NULL AND reviewed_by_admin_id IS NOT NULL AND reviewed_at IS NOT NULL)),
+  CONSTRAINT ck_skill_versions_safety CHECK (audience = 'admin' OR status NOT IN ('published','retired')
+                                             OR (safety_reviewed_by_admin_id IS NOT NULL AND safety_reviewed_at IS NOT NULL))
+) ENGINE=InnoDB;
+
+ALTER TABLE skills ADD CONSTRAINT fk_skills_current
+  FOREIGN KEY (id, current_version_id) REFERENCES skill_versions (skill_id, id);     -- 当前版本必须属于本技能
+
+CREATE TABLE skill_allowed_agents (                          -- 技能侧角色白名单：只有列入的角色能挂载该技能
+  skill_id            INT UNSIGNED NOT NULL,
+  agent_id            SMALLINT UNSIGNED NOT NULL,
+  audience            ENUM('admin','child','parent') NOT NULL,   -- 两个复合外键同时成立 ⇒ 技能与角色受众一致
+  added_by_admin_id   BIGINT UNSIGNED NULL,                  -- NULL = skills:seed
+  revoked_at          DATETIME(3)  NULL,                     -- 撤销后不能再挂载、运行时跳过（历史版本仍可追溯）
+  revoked_by_admin_id BIGINT UNSIGNED NULL,
+  created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (skill_id, agent_id),
+  CONSTRAINT fk_skill_allowed_skill  FOREIGN KEY (skill_id, audience) REFERENCES skills (id, audience),
+  CONSTRAINT fk_skill_allowed_agent  FOREIGN KEY (agent_id, audience) REFERENCES agents (id, audience),
+  CONSTRAINT fk_skill_allowed_admin  FOREIGN KEY (added_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT fk_skill_allowed_revoker FOREIGN KEY (revoked_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_skill_allowed_revoked CHECK ((revoked_at IS NULL) = (revoked_by_admin_id IS NULL))
+) ENGINE=InnoDB;
+
+CREATE TABLE agent_versions (                                -- 角色配置的版本：每次保存 = 新版本；内容与挂载的技能不可改
+  id                          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  agent_id                    SMALLINT UNSIGNED NOT NULL,
+  audience                    ENUM('admin','child','parent') NOT NULL,
+  version_no                  SMALLINT UNSIGNED NOT NULL,
+  name                        VARCHAR(20)  NOT NULL,         -- 如 课程设计师、呀哈哈队长
+  avatar_asset_id             BIGINT UNSIGNED NULL,
+  description                 VARCHAR(500) NOT NULL,         -- 角色说明（系统提示词中的角色段）
+  allowed_tools               JSON         NOT NULL,         -- 角色允许的内置工具；实际可用 = 角色 ∩ 技能 ∩ 受众工具目录
+  model                       VARCHAR(64)  NULL,             -- NULL = 系统设置 ai.model
+  monthly_budget_fen          INT UNSIGNED NOT NULL,         -- 角色月度预算（在全站 AI 预算之内）
+  params                      JSON         NOT NULL DEFAULT (JSON_OBJECT()),
+  based_on_version_id         BIGINT UNSIGNED NULL,
+  status                      ENUM('draft','published','retired') NOT NULL DEFAULT 'draft',
+  created_by_admin_id         BIGINT UNSIGNED NULL,          -- NULL = 迁移写入的默认版本
+  reviewed_by_admin_id        BIGINT UNSIGNED NULL,
+  reviewed_at                 DATETIME(3)  NULL,
+  safety_reviewed_by_admin_id BIGINT UNSIGNED NULL,
+  safety_reviewed_at          DATETIME(3)  NULL,
+  published_at                DATETIME(3)  NULL,
+  created_at                  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_agent_versions_no (agent_id, version_no),
+  UNIQUE KEY uq_agent_versions_agent_id (agent_id, id),
+  UNIQUE KEY uq_agent_versions_id_audience (id, audience),   -- 供 agent_runs / ai_chat_usage 证明受众
+  CONSTRAINT fk_agent_versions_agent   FOREIGN KEY (agent_id, audience) REFERENCES agents (id, audience),
+  CONSTRAINT fk_agent_versions_base    FOREIGN KEY (agent_id, based_on_version_id) REFERENCES agent_versions (agent_id, id),
+  CONSTRAINT fk_agent_versions_avatar  FOREIGN KEY (avatar_asset_id) REFERENCES assets (id),
+  CONSTRAINT fk_agent_versions_creator FOREIGN KEY (created_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT fk_agent_versions_review  FOREIGN KEY (reviewed_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT fk_agent_versions_safety  FOREIGN KEY (safety_reviewed_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_agent_versions_no CHECK (version_no >= 1),
+  CONSTRAINT ck_agent_versions_tools CHECK (JSON_TYPE(allowed_tools) = 'ARRAY' AND JSON_LENGTH(allowed_tools) <= 30),
+  CONSTRAINT ck_agent_versions_params CHECK (JSON_TYPE(params) = 'OBJECT'),
+  CONSTRAINT ck_agent_versions_budget CHECK (monthly_budget_fen <= 1000000),
+  CONSTRAINT ck_agent_versions_published CHECK (status NOT IN ('published','retired')
+                                                OR (published_at IS NOT NULL AND reviewed_by_admin_id IS NOT NULL AND reviewed_at IS NOT NULL)),
+  CONSTRAINT ck_agent_versions_safety CHECK (audience = 'admin' OR status NOT IN ('published','retired')
+                                             OR (safety_reviewed_by_admin_id IS NOT NULL AND safety_reviewed_at IS NOT NULL))
+) ENGINE=InnoDB;
+
+ALTER TABLE agents ADD CONSTRAINT fk_agents_current
+  FOREIGN KEY (id, current_version_id) REFERENCES agent_versions (agent_id, id);     -- 当前版本必须属于本角色
+
+CREATE TABLE agent_skills (                                  -- 角色版本挂载的技能（随角色版本保存，不可改）
+  agent_version_id        BIGINT UNSIGNED NOT NULL,
+  agent_id                SMALLINT UNSIGNED NOT NULL,
+  skill_id                INT UNSIGNED NOT NULL,
+  pinned_skill_version_id BIGINT UNSIGNED NULL,              -- NULL = 跟随技能当前发布版本；否则固定此版本
+  priority                TINYINT UNSIGNED NOT NULL,         -- 1 最先；指令冲突时数字小者优先（系统安全守则永远在最前）
+  overrides               JSON         NOT NULL DEFAULT (JSON_OBJECT()),  -- 角色级参数覆盖（只能覆盖技能 default_params 中的键）
+  PRIMARY KEY (agent_version_id, skill_id),
+  UNIQUE KEY uq_agent_skills_priority (agent_version_id, priority),
+  CONSTRAINT fk_agent_skills_version FOREIGN KEY (agent_id, agent_version_id) REFERENCES agent_versions (agent_id, id),
+  CONSTRAINT fk_agent_skills_allowed FOREIGN KEY (skill_id, agent_id) REFERENCES skill_allowed_agents (skill_id, agent_id),
+  CONSTRAINT fk_agent_skills_pin     FOREIGN KEY (skill_id, pinned_skill_version_id) REFERENCES skill_versions (skill_id, id),
+  CONSTRAINT ck_agent_skills_priority CHECK (priority BETWEEN 1 AND 50),
+  CONSTRAINT ck_agent_skills_overrides CHECK (JSON_TYPE(overrides) = 'OBJECT')
+) ENGINE=InnoDB;
+
+CREATE TABLE agent_budget_months (                           -- 角色月度预算：与全站 ai_budget_months 在同一事务内一起预留
+  agent_id     SMALLINT UNSIGNED NOT NULL,
+  budget_month CHAR(7)      NOT NULL,
+  cap_fen      INT UNSIGNED NOT NULL,                        -- 本月首次使用时取当前版本的 monthly_budget_fen
+  reserved_fen INT UNSIGNED NOT NULL DEFAULT 0,
+  spent_fen    INT UNSIGNED NOT NULL DEFAULT 0,
+  version      INT UNSIGNED NOT NULL DEFAULT 1,
+  updated_at   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (agent_id, budget_month),
+  KEY ix_agent_budget_month (budget_month),
+  CONSTRAINT fk_agent_budget_agent FOREIGN KEY (agent_id) REFERENCES agents (id),
+  CONSTRAINT fk_agent_budget_month FOREIGN KEY (budget_month) REFERENCES ai_budget_months (budget_month),  -- 必须有全站预算月份
+  CONSTRAINT ck_agent_budget_cap CHECK (reserved_fen + spent_fen <= cap_fen)
+) ENGINE=InnoDB;
+
+CREATE TABLE quick_tasks (                                   -- 保存的快捷任务：一句话 + 目标角色或多角色流水线（只限管理端角色）
+  id                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name                VARCHAR(40)  NOT NULL,
+  page                VARCHAR(32)  NOT NULL,                 -- 显示在哪个后台页面（courses、pets、yahaha、rules、stats…）
+  target              ENUM('agent','pipeline') NOT NULL,
+  agent_id            SMALLINT UNSIGNED NULL,
+  role_audience       ENUM('admin','child','parent') NOT NULL DEFAULT 'admin',
+  plan                JSON         NULL,                     -- 流水线：[{agentKey, instruction?}]，2–6 步
+  instruction         VARCHAR(1000) NOT NULL,
+  params              JSON         NOT NULL DEFAULT (JSON_OBJECT()),
+  status              ENUM('active','archived') NOT NULL DEFAULT 'active',
+  created_by_admin_id BIGINT UNSIGNED NOT NULL,
+  version             INT UNSIGNED NOT NULL DEFAULT 1,
+  created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_quick_tasks_name (page, name),
+  CONSTRAINT fk_quick_tasks_agent FOREIGN KEY (agent_id, role_audience) REFERENCES agents (id, audience),
+  CONSTRAINT fk_quick_tasks_admin FOREIGN KEY (created_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_quick_tasks_admin_only CHECK (role_audience = 'admin'),
+  CONSTRAINT ck_quick_tasks_page CHECK (REGEXP_LIKE(page, '^[a-z][a-z-]{1,31}$', 'c')),
+  CONSTRAINT ck_quick_tasks_target CHECK (
+       (target = 'agent'    AND agent_id IS NOT NULL AND plan IS NULL)
+    OR (target = 'pipeline' AND agent_id IS NULL AND JSON_TYPE(plan) = 'ARRAY' AND JSON_LENGTH(plan) BETWEEN 2 AND 6)),
+  CONSTRAINT ck_quick_tasks_params CHECK (JSON_TYPE(params) = 'OBJECT')
+) ENGINE=InnoDB;
+
+CREATE TABLE agent_runs (                                    -- 管理端 AI 运行：单角色任务、流水线、流水线步骤、技能试运行
+  id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  kind               ENUM('task','pipeline','pipeline_step','test') NOT NULL,
+  agent_id           SMALLINT UNSIGNED NULL,
+  agent_version_id   BIGINT UNSIGNED NULL,                   -- 运行时固定的角色版本
+  role_audience      ENUM('admin','child','parent') NOT NULL DEFAULT 'admin',
+  skill_version_id   BIGINT UNSIGNED NULL,                   -- 选中的技能版本（test：被测版本）
+  parent_run_id      BIGINT UNSIGNED NULL,                   -- pipeline_step 所属的流水线
+  step_no            TINYINT UNSIGNED NULL,                  -- 流水线第几步（1–6）
+  plan               JSON         NULL,                      -- pipeline：[{agentKey, instruction?}]
+  job_id             BIGINT UNSIGNED NULL,                   -- ai_jobs 中 kind = agent_run 的任务
+  page               VARCHAR(32)  NULL,                      -- 从哪个后台页面的一句话框发起
+  instruction        VARCHAR(1000) NOT NULL,                 -- 管理员的一句话（作为数据段传入，不作为系统指令）
+  input              JSON         NOT NULL,
+  output             JSON         NULL,                      -- 已通过技能输出模式校验；只含草稿引用与说明
+  error              VARCHAR(500) NULL,
+  status             ENUM('queued','running','waiting','succeeded','failed','cancelled') NOT NULL DEFAULT 'queued',
+  estimated_cost_fen INT UNSIGNED NOT NULL DEFAULT 0,
+  actual_cost_fen    INT UNSIGNED NULL,
+  budget_month       CHAR(7)      NOT NULL,
+  step_count         TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  latency_ms         INT UNSIGNED NULL,
+  cloned_from_run_id BIGINT UNSIGNED NULL,                   -- 从历史任务克隆重跑
+  quick_task_id      INT UNSIGNED NULL,
+  created_by_admin_id BIGINT UNSIGNED NOT NULL,
+  created_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  started_at         DATETIME(3)  NULL,
+  finished_at        DATETIME(3)  NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_agent_runs_step (parent_run_id, step_no),
+  UNIQUE KEY uq_agent_runs_job (job_id),
+  KEY ix_agent_runs_agent (agent_id, created_at),
+  KEY ix_agent_runs_skill (skill_version_id, created_at),
+  KEY ix_agent_runs_created (created_at),
+  CONSTRAINT fk_agent_runs_version  FOREIGN KEY (agent_id, agent_version_id) REFERENCES agent_versions (agent_id, id),
+  CONSTRAINT fk_agent_runs_audience FOREIGN KEY (agent_version_id, role_audience) REFERENCES agent_versions (id, audience),
+  CONSTRAINT fk_agent_runs_skill    FOREIGN KEY (skill_version_id) REFERENCES skill_versions (id),
+  CONSTRAINT fk_agent_runs_parent   FOREIGN KEY (parent_run_id) REFERENCES agent_runs (id),
+  CONSTRAINT fk_agent_runs_clone    FOREIGN KEY (cloned_from_run_id) REFERENCES agent_runs (id),
+  CONSTRAINT fk_agent_runs_job      FOREIGN KEY (job_id) REFERENCES ai_jobs (id),
+  CONSTRAINT fk_agent_runs_quick    FOREIGN KEY (quick_task_id) REFERENCES quick_tasks (id),
+  CONSTRAINT fk_agent_runs_admin    FOREIGN KEY (created_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_agent_runs_admin_only CHECK (role_audience = 'admin'),     -- 孩子对话不进入运行记录（不存对话文本）
+  CONSTRAINT ck_agent_runs_shape CHECK (
+       (kind = 'test'          AND skill_version_id IS NOT NULL AND parent_run_id IS NULL AND step_no IS NULL AND plan IS NULL)
+    OR (kind = 'task'          AND agent_version_id IS NOT NULL AND parent_run_id IS NULL AND step_no IS NULL AND plan IS NULL)
+    OR (kind = 'pipeline'      AND agent_id IS NULL AND agent_version_id IS NULL AND parent_run_id IS NULL AND step_no IS NULL
+                               AND job_id IS NULL AND JSON_TYPE(plan) = 'ARRAY' AND JSON_LENGTH(plan) BETWEEN 2 AND 6)
+    OR (kind = 'pipeline_step' AND agent_version_id IS NOT NULL AND parent_run_id IS NOT NULL AND step_no BETWEEN 1 AND 6 AND plan IS NULL)),
+  CONSTRAINT ck_agent_runs_steps CHECK (step_count <= 20),               -- 工具循环最多 20 步
+  CONSTRAINT ck_agent_runs_cost CHECK (actual_cost_fen IS NULL OR actual_cost_fen <= estimated_cost_fen),
+  CONSTRAINT ck_agent_runs_finished CHECK ((status IN ('succeeded','failed','cancelled')) = (finished_at IS NOT NULL)),
+  CONSTRAINT ck_agent_runs_month CHECK (REGEXP_LIKE(budget_month, '^[0-9]{4}-(0[1-9]|1[0-2])$', 'c')),
+  CONSTRAINT ck_agent_runs_input CHECK (JSON_TYPE(input) = 'OBJECT')
+) ENGINE=InnoDB;
+
+CREATE TABLE agent_run_steps (                               -- 每一步的记录（不可改；180 天后整行清理，汇总留在 agent_runs）
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  run_id           BIGINT UNSIGNED NOT NULL,
+  step_no          TINYINT UNSIGNED NOT NULL,
+  kind             ENUM('route','llm','tool','validate','guard') NOT NULL,   -- guard：禁止词与输出安全检查
+  skill_version_id BIGINT UNSIGNED NULL,
+  tool_name        VARCHAR(64)  NULL,
+  model            VARCHAR(64)  NULL,
+  status           ENUM('ok','error','blocked','timeout') NOT NULL,
+  input            JSON         NULL,
+  output           JSON         NULL,
+  cost_fen         INT UNSIGNED NOT NULL DEFAULT 0,
+  latency_ms       INT UNSIGNED NOT NULL,
+  created_at       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_agent_run_steps_no (run_id, step_no),
+  CONSTRAINT fk_agent_run_steps_run   FOREIGN KEY (run_id) REFERENCES agent_runs (id),
+  CONSTRAINT fk_agent_run_steps_skill FOREIGN KEY (skill_version_id) REFERENCES skill_versions (id),
+  CONSTRAINT ck_agent_run_steps_no CHECK (step_no BETWEEN 1 AND 20),
+  CONSTRAINT ck_agent_run_steps_tool CHECK ((kind = 'tool') = (tool_name IS NOT NULL)),
+  CONSTRAINT ck_agent_run_steps_model CHECK (kind NOT IN ('route','llm') OR model IS NOT NULL)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
@@ -1106,6 +1397,9 @@ CREATE TABLE ai_chat_usage (
   prompt_tokens     INT UNSIGNED NULL,
   completion_tokens INT UNSIGNED NULL,
   latency_ms        INT UNSIGNED NULL,
+  agent_version_id  BIGINT UNSIGNED NULL,                    -- 呀哈哈队长（儿童角色）的角色版本；输入被拦截时为 NULL
+  agent_audience    ENUM('admin','child','parent') NOT NULL DEFAULT 'child',
+  cost_fen          INT UNSIGNED NOT NULL DEFAULT 0,         -- 计入全站与角色月度预算
   created_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uq_ai_usage_request (family_id, client_request_id),
@@ -1114,6 +1408,8 @@ CREATE TABLE ai_chat_usage (
   KEY ix_ai_usage_created (created_at),
   CONSTRAINT fk_ai_usage_child  FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_ai_usage_parent FOREIGN KEY (family_id, parent_id) REFERENCES parents (family_id, id),
+  CONSTRAINT fk_ai_usage_agent  FOREIGN KEY (agent_version_id, agent_audience) REFERENCES agent_versions (id, audience),
+  CONSTRAINT ck_ai_usage_child_role CHECK (agent_audience = 'child'),   -- 聊天只能使用面向孩子的角色版本
   CONSTRAINT ck_ai_usage_principal CHECK (
        (principal = 'child'  AND child_id IS NOT NULL AND parent_id IS NULL)
     OR (principal = 'parent' AND parent_id IS NOT NULL AND child_id IS NULL)),
@@ -1239,7 +1535,8 @@ CREATE TABLE system_settings (
     'discovery.enabled','discovery.spot_probability_pct','discovery.daily_cap','discovery.rarity_weights','discovery.milestone_bonus',
     'companion.den_base_slots','companion.den_slot_prices','companion.fragment_pass_scope',
     'studio.default_monthly_cap_fen','studio.unit_prices','studio.voices',
-    'learning.play_ttl_minutes','content.allow_self_review')),
+    'learning.play_ttl_minutes','content.allow_self_review',
+    'agents.limits','agents.page_routes','agents.stats_min_group')),
   -- 规则边界由数据库保证（AI 或界面填错都写不进去）
   CONSTRAINT ck_system_settings_probability CHECK (setting_key <> 'discovery.spot_probability_pct'
     OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 1 AND 100)),
@@ -1248,7 +1545,16 @@ CREATE TABLE system_settings (
   CONSTRAINT ck_system_settings_den_slots CHECK (setting_key <> 'companion.den_base_slots'
     OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 1 AND 10)),
   CONSTRAINT ck_system_settings_play_ttl CHECK (setting_key <> 'learning.play_ttl_minutes'
-    OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 30 AND 720))
+    OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 30 AND 720)),
+  CONSTRAINT ck_system_settings_agent_limits CHECK (setting_key <> 'agents.limits'
+    OR (JSON_TYPE(value) = 'OBJECT'
+        AND JSON_EXTRACT(value, '$.max_steps') BETWEEN 1 AND 20              -- 工具循环最多 20 步（用户指定上限）
+        AND JSON_EXTRACT(value, '$.child_max_steps') BETWEEN 1 AND 5
+        AND JSON_EXTRACT(value, '$.max_pipeline_steps') BETWEEN 2 AND 6
+        AND JSON_EXTRACT(value, '$.run_timeout_s') BETWEEN 30 AND 1800
+        AND JSON_EXTRACT(value, '$.child_run_timeout_s') BETWEEN 5 AND 30)),
+  CONSTRAINT ck_system_settings_stats_group CHECK (setting_key <> 'agents.stats_min_group'
+    OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 3 AND 50))
 ) ENGINE=InnoDB;
 
 CREATE TABLE idempotency_requests (                          -- 所有需登录的写请求：同一客户端请求 ID 只执行一次
@@ -1291,7 +1597,10 @@ INSERT INTO system_settings (setting_key, value) VALUES
   ('studio.unit_prices',              CAST('{"llm_per_1k_tokens_fen":1,"image_fen":20,"ocr_page_fen":1,"tts_fen":0}' AS JSON)),
   ('studio.voices',                   CAST('{"zh":"zh_CN-huayan-medium","en":"en_US-amy-medium"}' AS JSON)),
   ('learning.play_ttl_minutes',       CAST('120' AS JSON)),
-  ('content.allow_self_review',       CAST('true' AS JSON));
+  ('content.allow_self_review',       CAST('true' AS JSON)),
+  ('agents.limits',                   CAST('{"max_steps":20,"child_max_steps":3,"max_pipeline_steps":6,"llm_timeout_s":60,"child_llm_timeout_s":20,"tool_timeout_s":30,"run_timeout_s":600,"child_run_timeout_s":25,"output_repair_attempts":1}' AS JSON)),
+  ('agents.page_routes',              CAST('{"courses":"course-designer","pets":"art-designer","yahaha":"art-designer","rules":"event-planner","skills":"qa-reviewer","agents":"qa-reviewer","runs":"ops-analyst","stats":"ops-analyst"}' AS JSON)),
+  ('agents.stats_min_group',          CAST('5' AS JSON));
 -- 学习伙伴默认档位与成长阶段（开放问题 Q5、Q8：已默认，可调整；管理员在后台修改）
 INSERT INTO pet_tiers (id, name, sort_order, star_price, fragment_price, adoption_threshold) VALUES
   (1, '初级', 1,  20,  40,   0),
@@ -1307,4 +1616,30 @@ CROSS JOIN (
   UNION ALL SELECT 3, '守护', 12, '["happy-wave"]'
   UNION ALL SELECT 4, '星耀', 20, '["cheer-spin"]'
 ) s;
+-- 系统技能：儿童安全（不能停用；内容由 xingya skills:seed 从仓库 content/skills/child-safety/ 导入）
+INSERT INTO skills (id, skill_key, audience, is_system) VALUES (1, 'child-safety', 'child', 1);
+-- 默认 7 个 AI 角色（开放问题 Q19–Q21：已默认，可调整）。v1 为草稿：skills:seed 挂载默认技能后，由管理员审核发布才能运行。
+INSERT INTO agents (id, agent_key, audience, is_system) VALUES
+  (1, 'course-designer', 'admin', 1),
+  (2, 'art-designer',    'admin', 1),
+  (3, 'voice-artist',    'admin', 1),
+  (4, 'event-planner',   'admin', 1),
+  (5, 'qa-reviewer',     'admin', 1),
+  (6, 'ops-analyst',     'admin', 1),
+  (7, 'yahaha-captain',  'child', 1);
+INSERT INTO agent_versions (id, agent_id, audience, version_no, name, description, allowed_tools, monthly_budget_fen) VALUES
+  (1, 1, 'admin', 1, '课程设计师', '根据资料分析单词、句型与知识点，按模板生成课程草稿，按要求重写单题；只写草稿。',
+     CAST('["materials.read","words.search","templates.read","course.read_draft","course.write_draft","course.rewrite_question"]' AS JSON), 6000),
+  (2, 2, 'admin', 1, '美术设计师', '设计学习伙伴、呀哈哈款式与课程配图，保持统一画风；全部原创，只写草稿素材。',
+     CAST('["image.generate","assets.search","course.read_draft","course.attach_images","pet.write_design","yahaha.write_style"]' AS JSON), 7000),
+  (3, 3, 'admin', 1, '配音师', '为伙伴台词、呀哈哈叫声与课程对话分配声音与音高，用本机 Piper 生成试听音频。',
+     CAST('["tts.synthesize","assets.search","course.read_draft","course.assign_voices","pet.write_voice","yahaha.write_voice"]' AS JSON), 500),
+  (4, 4, 'admin', 1, '活动策划', '把一句话活动想法填成投放规则表单并估算影响；规则须管理员确认后生效。',
+     CAST('["rules.read","styles.read","courses.list","rule.write_draft","rule.estimate_impact"]' AS JSON), 1000),
+  (5, 5, 'admin', 1, '质检员', '检查课程、伙伴、款式与规则草稿：自动检查、儿童安全与原创性，写质检报告；不能发布。',
+     CAST('["course.read_draft","course.run_checks","assets.read","pet.read_design","yahaha.read_style","rules.read","qa.write_report"]' AS JSON), 2000),
+  (6, 6, 'admin', 1, '运营分析师', '只读全站聚合数据（人数少于阈值的分组不显示），输出运营与费用分析。',
+     CAST('["stats.aggregate","jobs.summary"]' AS JSON), 500),
+  (7, 7, 'child', 1, '呀哈哈队长', '友善的小树灵，带领呀哈哈家族，陪 6–12 岁孩子练英语、讲故事、答疑；不记忆对话。',
+     CAST('["child.learned_words"]' AS JSON), 3000);
 INSERT INTO schema_migrations (version, checksum) VALUES ('0001', REPEAT('0', 64));

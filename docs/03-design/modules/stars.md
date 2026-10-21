@@ -11,7 +11,7 @@
 
 ledger, balances, shop_items, child_items, reward_options, redemptions
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单55-张)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)。
 
 ## 边界
 

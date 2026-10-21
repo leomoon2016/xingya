@@ -11,13 +11,13 @@
 
 words, word_senses, courses, course_versions, course_drafts, levels, questions, question_answers
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单55-张)；文档结构、题型两部分、K 规则与发布流程见 [课程模型](../course-model.md)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单65-张)；文档结构、题型两部分、K 规则与发布流程见 [课程模型](../course-model.md)。
 
 ## 边界
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md#34-模块与边界规则) 边界规则）；`repo.ts` 只访问上面列出的表。
 - 计划文件：`apps/api/src/modules/content/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`、`*.test.ts`。
-- 依赖：studio（生成与发布任务、素材）、family（管理员）。向 studio 注册任务处理器 `course_analyze`（资料 → 知识清单）、`course_generate`（清单 + 模板 → 草稿与配图）、`question_rewrite`（重写一题）、`publish_audio`（发布）。
+- 依赖：studio（生成与发布任务、素材）、family（管理员）。AI 流程由 AI 角色执行（课程设计师的技能 `course-analyze`、`course-generate`、`question-rewrite`；美术设计师 `course-illustration`；配音师 `course-voice`；质检员 `content-qa`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`materials.read`、`words.search`、`templates.read`、`courses.list`、`course.read_draft`、`course.write_draft`（只写草稿，每次写入都跑 K 规则）、`course.rewrite_question`、`course.attach_images`、`course.assign_voices`（写对话声音分配并生成试听音频）、`course.run_checks`；以及系统任务处理器 `publish_audio`（发布，确定性，复用试听音频的哈希）。**没有发布类工具**。
 
 ## 接口
 
@@ -40,7 +40,7 @@ setWordAudio(admin, wordId, assetId) / setSenseImage(admin, senseId, assetId)
 createCourse(admin, {id, subject, grade, sortOrder, templateId})
 openDraft(admin, courseId, {fromVersionId?}): Draft              // 每门课最多一份未完成草稿
 updateDraft(admin, draftId, patch & {version}): {draft, checkReport}  // 每次保存都跑 K 规则
-requestAiRewrite(admin, draftId, questionKey, hint?): JobId
+requestAiRewrite(admin, draftId, questionKey, hint?): RunId        // = studio.startTask(课程设计师, question-rewrite)
 previewLevel(admin, draftId, levelKey): LevelVisible               // 学生视角试玩（不记录）
 submitForReview(admin, draftId, version) / returnToDraft(admin, draftId, reason)
 publish(admin, draftId, version): JobId                            // 入队 publish_audio
