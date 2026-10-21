@@ -16,7 +16,7 @@ ai_chat_usage
 ## 边界
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md) 边界规则）；`repo.ts` 只访问上面列出的表。
-- 计划文件：`apps/api/src/modules/chat/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`、`*.test.ts`。
+- 计划文件：`apps/api/src/modules/chat/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`；单元测试在 `apps/api/test/unit/chat/`。
 - 依赖：controls（`checkAccess`、配额）、studio（`reserveChildAgentInTx` / `runChildAgent` / `settleChildAgentInTx`）。不再直接调用 LLM 适配器。
 - 流程：输入过滤（纯计算，先于事务）→ 事务一（`child_controls` 行锁、配额、幂等、`pending` 记录；输入未命中时预留全站 + 角色预算，命中时直接记 `input_blocked`、不预留）→ 事务外运行角色（最多 3 步、25 秒）→ 事务二（更新记录、结算）。预算不足 → `503 AI_BUDGET_EXHAUSTED`（记录 `error`，不计配额）。
 

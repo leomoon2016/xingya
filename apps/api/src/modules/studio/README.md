@@ -6,6 +6,6 @@
 
 **规则**：其他模块只能通过本目录的 `index.ts` 调用本模块；`repo.ts` 只访问上面列出的表。
 
-**计划文件**（尚未创建）：`index.ts`（公开接口）、`routes.ts`（HTTP 路由与 Zod 模式）、`service.ts`（业务规则）、`repo.ts`（Kysely 查询）、`jobs/`（任务执行器）、`providers/`（适配器）、`agents/`（技能、角色、工具目录、角色执行器、导入导出）、`*.test.ts`（单元测试）。
+**计划文件**（尚未创建）：`index.ts`（公开接口）、`routes.ts`（HTTP 路由与 Zod 模式）、`service.ts`（业务规则）、`repo.ts`（Kysely 查询）；子目录 `jobs/`、`assets/`、`skills/`、`agents/`、`runner/`、`tools/`、`providers/`（各有 README，仍属同一模块、只有一个 `index.ts`）；单元测试在 `apps/api/test/unit/studio/`。
 
 需求：`docs/01-requirements/modules/studio.md`；`docs/01-requirements/modules/agents.md`；设计：`docs/03-design/modules/studio.md`、`docs/03-design/modules/agents.md`；决策：ADR 0009、0014。

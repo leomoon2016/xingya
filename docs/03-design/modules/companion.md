@@ -15,7 +15,7 @@ pet_tiers, pet_tier_stages, pet_species, pet_dens, child_pets
 ## 边界
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md#34-模块与边界规则) 边界规则）；`repo.ts` 只访问上面列出的表。
-- 计划文件：`apps/api/src/modules/companion/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`、`*.test.ts`。
+- 计划文件：`apps/api/src/modules/companion/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`；单元测试在 `apps/api/test/unit/companion/`。
 - 依赖：stars（扣费、学习星累计）、studio（设计任务与素材）、family。被 learning 调用 `addXpInTx`。
 - 伙伴设计由 AI 角色执行（美术设计师 `pet-design`、配音师 `pet-voice`、质检员 `content-qa`，见 [agents.md](agents.md)）。本模块向 studio 注册内置工具：`pet.write_design`（4 张候选、阶段图与动作关键帧写入种类草稿）、`pet.write_voice`（台词音频：Piper + ffmpeg 变调，本机进程类）、`pet.read_design`。**没有上架类工具**，审核上架仍由管理员操作。
 
@@ -47,7 +47,7 @@ submitSpecies / reviewSpecies / publishSpecies(admin, speciesId, {tierId, versio
 - **扩建**：`extra_slots = n` 时价格取 `den_slot_prices[n]`，超出数组 → `409 DEN_MAX`；`debitInTx(star, den_expand, source_key = den:expand:{n+1})`；`extra_slots + 1`（乐观锁 `version`）。
 - **经验**：`addXpInTx` 锁当前陪伴行，`xp += amount`，循环：`need = xp_base + xp_step × (level − 1)`，`xp ≥ need` 则 `xp −= need, level + 1`，直到 `max_level`（满级后经验只累计 `total_xp`）。返回升级次数与新阶段（阶段 = `min_level ≤ level` 的最大 `stage_no`），客户端据此播放升级台词与换形象。
 - **设计数据** `pet_species.design`（JSON）：`{baseAssetId, stages: [{stageNo, imageAssetId, actions: {idle, happy, cheer, …: animationAssetId}}], lines: {greeting, encourage, levelUp: audioAssetId}}`。动画素材是 JSON 清单：`{keyframes: [assetId…], template: "bounce", durationMs, loop}`，由前端动效播放器渲染。
-- **提示词**：`description` + 风格模板片段 + 自动追加的禁止项；先用 `content/safety/prompt-blocklist` 检查描述与名称。
+- **提示词**：`description` + 风格模板片段 + 自动追加的禁止项；先用 `seeds/safety/prompt-blocklist` 检查描述与名称。
 
 ## 时序：领养
 

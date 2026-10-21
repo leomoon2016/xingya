@@ -29,11 +29,11 @@
 - `questions.visible`：题干、选项（带选项 ID）、资源 ID——作答前只下发这一部分；数据库 CHECK 拒绝其中出现 `answer`、`accept`、`explanation`、`correct`、`correctOptionId` 字段。
 - `question_answers`：正确选项 ID / 标准答案 / 可接受答案 / 正确顺序、解析。只有判分器在服务端读取，作答后才返回给客户端。
 
-## 4.1.1c 仓库里还保留什么
-- `content/templates/`：课程模板定义（关卡顺序、题型组合、每关题数、适用年级），随 api 一起打包，版本化。
-- `content/english/grade-1/`：少量示例课程，用 `xingya course:import` 导入为**草稿**（再走审核与发布）。
-- `content/shop/`（装扮初始数据）、`content/phrases/`（预设短语/表情）、`content/safety/`（聊天过滤词表与 AI 提示词禁止项）、`content/avatars/`（孩子头像）。
-- 没有课程包、没有构建期音频，部署时不导入内容。
+## 4.1.1c 仓库里还保留什么（`seeds/` 内置数据，ADR 0015）
+- `seeds/course-templates/`：课程模板定义（关卡顺序、题型组合、每关题数、适用年级），随发布包部署、api 启动时读取，版本化。
+- `seeds/samples/english/grade-1/`：少量示例课程，用 `xingya course:import` 导入为**草稿**（再走审核与发布）。
+- `seeds/shop/`（装扮初始数据）、`seeds/phrases/`（预设短语/表情）、`seeds/safety/`（聊天过滤词表与 AI 提示词禁止项）、`seeds/avatars/`（孩子头像）。
+- 没有课程包、没有构建期音频，部署时不导入课程；部署步骤 `xingya seeds:apply` 只补齐缺失的装扮初始数据与默认技能、角色挂载（见 `seeds/README.md`）。
 
 > 课程文档结构、模板与自动检查规则见 [课程模型](../../03-design/course-model.md)。
 

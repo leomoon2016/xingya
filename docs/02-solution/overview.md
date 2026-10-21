@@ -8,14 +8,16 @@
 
 ```mermaid
 flowchart LR
-  subgraph Client["浏览器 / 可安装 PWA"]
+  subgraph Client["主站 <域名>：浏览器 / 可安装 PWA（apps/web）"]
     Kid["孩子端（头像墙、闯关、复习、藏匿点与图鉴、学习伙伴、商店、消息、呀哈哈队长）"]
     Par["家长中心"]
-    Adm["系统管理端 /admin（含 AI 工作室、技能库与 AI 角色）"]
     SW["Service Worker：应用外壳 + 当前课程素材缓存"]
   end
+  subgraph AdminC["后台 admin.<域名>：浏览器（apps/admin，独立构建与 CSP）"]
+    Adm["系统管理端：AI 工作室、技能库与 AI 角色、家庭与举报、设置、审计"]
+  end
   subgraph ECS["阿里云 ECS 2GB + 2GB swap"]
-    NGX["Nginx：HTTPS、前端静态文件、/api 反向代理"]
+    NGX["Nginx：HTTPS；主站与后台两个站点的静态文件；/api 反向代理（主站拒绝 /api/v1/admin）"]
     APP["xingya 服务（Node 24 + Fastify 5，systemd，单进程）\n11 个模块 + 调度器 + AI 任务执行器（≤2 并发，含 AI 角色执行器）"]
     PIP["Piper / ffmpeg\n一次性进程（独立 cgroup ≤350 MB）"]
     DB[("MySQL 8.4\n127.0.0.1 / Unix socket")]
@@ -30,6 +32,8 @@ flowchart LR
   Ops["运维者电脑"]
 
   Client -->|HTTPS 443| NGX
+  AdminC -->|HTTPS 443 admin.| NGX
+  AdminC -->|签名 URL 预览 / 直传| OSS
   Client -->|HTTPS 素材| CDN
   CDN -->|回源鉴权 pub/| OSS
   NGX -->|127.0.0.1:3000| APP
@@ -48,23 +52,41 @@ flowchart LR
 ## 3.2 技术栈
 | 层 | 选型 | 说明 |
 | --- | --- | --- |
-| 前端 | React 19、Vite、React Router、TanStack Query、vite-plugin-pwa（Workbox）、CSS Modules | 孩子端/家长端/管理端三个懒加载路由块；伙伴与呀哈哈动画用“关键帧图片 + 动效模板”客户端渲染（CSS/Web Animations） |
+| 前端 | React 19、Vite、React Router、TanStack Query、vite-plugin-pwa（Workbox）、CSS Modules | 两个前端应用：`apps/web`（孩子端与家长中心两个懒加载路由块，可安装 PWA）与 `apps/admin`（系统管理端，独立构建、独立子域名与 CSP，不做 PWA；ADR 0015），共享 `packages/ui` 主题；伙伴与呀哈哈动画用“关键帧图片 + 动效模板”客户端渲染（CSS/Web Animations） |
 | 服务端 | Node 24 LTS、TypeScript（strict）、Fastify 5、Zod（请求/响应/课程文档/AI 输出共用）、Kysely、mysql2、pino、nodemailer、阿里云 OSS SDK | 单进程；时间统一通过可注入的 `Clock` 获取（测试可控） |
 | 数据库 | MySQL 8.4 LTS、InnoDB、utf8mb4、REPEATABLE READ | 连接 `time_zone='+00:00'`；所有 DATETIME 存 UTC；任务队列也在 MySQL |
 | 文档抽取 | 在 worker 线程中抽取 PDF 文字层、docx、pptx 文本（`resourceLimits` 限制堆 128 MB、超时 60 秒；docx/pptx 解压总量 ≤ 100 MB、条目数 ≤ 2000，防压缩炸弹；不执行宏、不解析外部链接）；照片走云端 OCR 适配器 | 扫描版 PDF 首发不支持 |
 | 语音 | Piper（一次性进程，安装在服务器 `/opt/xingya/piper`）、ffmpeg（编码 MP3、变调） | 只在发布/设计任务中运行，无常驻语音服务 |
 | AI 提供方 | 适配器接口：LLM、图像、OCR（推荐见开放问题 Q15） | 生成结果必须通过 Zod 模式校验 |
 | 存储与分发 | 阿里云 OSS + CDN | 素材按内容哈希命名，永久缓存 |
-| 测试 | Vitest（单元/集成）、Playwright（端到端） | 集成测试用 CI 中真实 MySQL 8.4；AI、OSS、Piper 用桩 |
+| 测试 | Vitest（`apps/api/test/{unit,integration,concurrency,safety}`）、Playwright（`apps/web/e2e`、`apps/admin/e2e`）、`tools/safety-eval`（儿童安全评测） | 集成测试用 CI 中真实 MySQL 8.4；AI、OSS、Piper 用桩 |
 | 运维 | Nginx、systemd、GitHub Actions、ossutil、age（备份加密） | 无容器编排 |
 
-## 仓库目录结构（已批准；2026-10-21 按设计变更与第 10 部分调整）
+## 仓库目录结构（已批准；2026-10-21 按设计变更、第 10 部分与目录调整〔ADR 0015〕更新）
 
 ```
 xingya/
 ├── .github/
 │   └── workflows/
 ├── apps/
+│   ├── admin/
+│   │   ├── e2e/
+│   │   └── src/
+│   │       ├── app/
+│   │       ├── components/
+│   │       ├── features/
+│   │       │   ├── agents/
+│   │       │   ├── audit/
+│   │       │   ├── courses/
+│   │       │   ├── families/
+│   │       │   ├── pets/
+│   │       │   ├── rules/
+│   │       │   ├── runs/
+│   │       │   ├── settings/
+│   │       │   ├── skills/
+│   │       │   ├── studio/
+│   │       │   └── yahaha/
+│   │       └── lib/
 │   ├── api/
 │   │   ├── src/
 │   │   │   ├── modules/
@@ -79,9 +101,23 @@ xingya/
 │   │   │   │   ├── social/
 │   │   │   │   ├── stars/
 │   │   │   │   └── studio/
+│   │   │   │       ├── agents/
+│   │   │   │       ├── assets/
+│   │   │   │       ├── jobs/
+│   │   │   │       ├── providers/
+│   │   │   │       ├── runner/
+│   │   │   │       ├── skills/
+│   │   │   │       └── tools/
 │   │   │   └── platform/
+│   │   │       ├── auth/
+│   │   │       ├── config/
+│   │   │       ├── db/
+│   │   │       └── logging/
 │   │   └── test/
-│   │       └── integration/
+│   │       ├── concurrency/
+│   │       ├── integration/
+│   │       ├── safety/
+│   │       └── unit/
 │   └── web/
 │       ├── e2e/
 │       ├── public/
@@ -89,36 +125,22 @@ xingya/
 │           ├── app/
 │           ├── components/
 │           ├── features/
-│           │   ├── admin/
-│           │   │   └── studio/
-│           │   │       ├── agents/
-│           │   │       ├── courses/
-│           │   │       ├── pets/
-│           │   │       ├── rules/
-│           │   │       ├── runs/
-│           │   │       ├── skills/
-│           │   │       └── yahaha/
-│           │   ├── album/
-│           │   ├── chat/
-│           │   ├── companion/
-│           │   ├── discovery/
-│           │   ├── learn/
-│           │   ├── login/
-│           │   ├── parent/
-│           │   ├── review/
-│           │   ├── shop/
-│           │   └── social/
+│           │   ├── child/
+│           │   │   ├── album/
+│           │   │   ├── chat/
+│           │   │   ├── companion/
+│           │   │   ├── discovery/
+│           │   │   ├── learn/
+│           │   │   ├── login/
+│           │   │   ├── review/
+│           │   │   ├── shop/
+│           │   │   └── social/
+│           │   └── parent/
+│           │       ├── approvals/
+│           │       ├── controls/
+│           │       ├── dashboard/
+│           │       └── reports/
 │           └── lib/
-├── content/
-│   ├── agents/
-│   ├── avatars/
-│   ├── english/
-│   │   └── grade-1/
-│   ├── phrases/
-│   ├── safety/
-│   ├── shop/
-│   ├── skills/
-│   └── templates/
 ├── db/
 │   ├── migrations/
 │   │   └── 0001_init.sql
@@ -174,33 +196,66 @@ xingya/
 │   │   ├── characters/
 │   │   ├── components/
 │   │   ├── flows/
+│   │   │   ├── admin/
+│   │   │   ├── child/
+│   │   │   └── parent/
 │   │   ├── mockups/
 │   │   │   ├── admin/
-│   │   │   ├── album/
-│   │   │   ├── chat/
-│   │   │   ├── companion/
-│   │   │   ├── discovery/
-│   │   │   ├── learn/
-│   │   │   ├── login/
-│   │   │   ├── parent/
-│   │   │   ├── review/
-│   │   │   ├── shop/
-│   │   │   ├── social/
-│   │   │   └── studio/
+│   │   │   │   ├── agents/
+│   │   │   │   ├── audit/
+│   │   │   │   ├── courses/
+│   │   │   │   ├── families/
+│   │   │   │   ├── pets/
+│   │   │   │   ├── rules/
+│   │   │   │   ├── runs/
+│   │   │   │   ├── settings/
+│   │   │   │   ├── skills/
+│   │   │   │   ├── studio/
+│   │   │   │   └── yahaha/
+│   │   │   ├── child/
+│   │   │   │   ├── album/
+│   │   │   │   ├── chat/
+│   │   │   │   ├── companion/
+│   │   │   │   ├── discovery/
+│   │   │   │   ├── learn/
+│   │   │   │   ├── login/
+│   │   │   │   ├── review/
+│   │   │   │   ├── shop/
+│   │   │   │   └── social/
+│   │   │   └── parent/
+│   │   │       ├── approvals/
+│   │   │       ├── controls/
+│   │   │       ├── dashboard/
+│   │   │       └── reports/
 │   │   ├── tokens/
 │   │   └── wireframes/
 │   │       ├── admin/
-│   │       ├── album/
-│   │       ├── chat/
-│   │       ├── companion/
-│   │       ├── discovery/
-│   │       ├── learn/
-│   │       ├── login/
-│   │       ├── parent/
-│   │       ├── review/
-│   │       ├── shop/
-│   │       ├── social/
-│   │       └── studio/
+│   │       │   ├── agents/
+│   │       │   ├── audit/
+│   │       │   ├── courses/
+│   │       │   ├── families/
+│   │       │   ├── pets/
+│   │       │   ├── rules/
+│   │       │   ├── runs/
+│   │       │   ├── settings/
+│   │       │   ├── skills/
+│   │       │   ├── studio/
+│   │       │   └── yahaha/
+│   │       ├── child/
+│   │       │   ├── album/
+│   │       │   ├── chat/
+│   │       │   ├── companion/
+│   │       │   ├── discovery/
+│   │       │   ├── learn/
+│   │       │   ├── login/
+│   │       │   ├── review/
+│   │       │   ├── shop/
+│   │       │   └── social/
+│   │       └── parent/
+│   │           ├── approvals/
+│   │           ├── controls/
+│   │           ├── dashboard/
+│   │           └── reports/
 │   ├── 05-plans/
 │   ├── 06-releases/
 │   │   ├── v1.0/
@@ -223,15 +278,30 @@ xingya/
 │   │   ├── 0011-fragments-second-currency.md
 │   │   ├── 0012-server-decided-discovery-ai-filled-rules.md
 │   │   ├── 0013-keyframe-motion-template-animation.md
-│   │   └── 0014-skills-and-agent-roles.md
+│   │   ├── 0014-skills-and-agent-roles.md
+│   │   └── 0015-admin-app-and-seeds.md
 │   └── reviews/
 │       └── 2026-10-21-整体评审.md
 ├── packages/
-│   ├── content-schema/
 │   ├── contracts/
-│   └── rules/
+│   ├── rules/
+│   ├── seed-schema/
+│   ├── skill-format/
+│   └── ui/
+├── seeds/
+│   ├── agents/
+│   ├── avatars/
+│   ├── course-templates/
+│   ├── phrases/
+│   ├── safety/
+│   ├── samples/
+│   │   └── english/
+│   │       └── grade-1/
+│   ├── shop/
+│   └── skills/
 ├── tools/
-│   └── validate-content/
+│   ├── safety-eval/
+│   └── validate-seeds/
 ├── .gitignore
 ├── CHANGELOG.md
 ├── package.json
@@ -249,9 +319,9 @@ xingya/
 | `routes.ts` | HTTP 路由（Zod 模式） |
 | `service.ts` | 业务规则 |
 | `repo.ts` | 本模块表的 Kysely 查询（只碰自己的表） |
-| `*.test.ts` | 单元测试 |
+| 单元测试 | 不放在模块目录；在 `apps/api/test/unit/<module>/`（并发与儿童安全用例在 `test/concurrency/`、`test/safety/`） |
 
-`apps/api/src/platform/`：db、事务与幂等、错误、鉴权钩子、Clock、调度器、邮件发送、配置。
+`apps/api/src/platform/`：`db/`（连接、事务、幂等、迁移与 `seeds:apply`）、`auth/`（会话、主体、TOTP、主站/后台域名区分）、`logging/`（日志、错误格式）、`config/`（配置、Clock、调度器、OSS 客户端、邮件发送）。studio 模块内部分为 `jobs/`、`assets/`、`skills/`、`agents/`、`runner/`、`tools/`、`providers/` 子目录（仍是一个模块、一个 `index.ts`）。
 
 原规格 §3.3 的路径与批准结构的对应：
 
@@ -259,13 +329,13 @@ xingya/
 | --- | --- |
 | `apps/server/src/modules/<module>/`（identity … yahaha …） | `apps/api/src/modules/<module>/`；模块代码名 identity → `family`，yahaha（聊天）→ `chat`（接口路径 `/api/v1/yahaha/*` 不变）；2026-10-21 新增 `companion`、`discovery`、`studio` |
 | `apps/server/src/platform/` | `apps/api/src/platform/` |
-| `apps/web/`（child/、parent/、admin/ 三个路由块） | `apps/web/src/{app,features/{login,learn,review,shop,companion,discovery,album,social,chat,parent,admin(/studio)},components,lib}`；三个懒加载路由块不变 |
-| `packages/shared/`（API 与课程包 Zod、错误码、规则常量） | `packages/contracts`（API Zod、错误码）、`packages/rules`（规则常量与纯函数）、`packages/content-schema`（课程文档、模板与题型 Zod、K 规则） |
-| `packages/content-tools/`（validate / build / import / gen-audio / legacy-convert） | `tools/validate-content`（校验仓库内容）；导入为 `apps/api` 的 `xingya course:import`（示例课程 → 草稿）；构建期音频（gen-audio）与课程包组装（build）**取消**（[ADR 0010](../adr/0010-oss-cdn-publish-time-piper.md)）；旧内容转换（legacy-convert）取消，首发课程在后台制作 |
-| `content/` | `content/`（`templates/`、`english/grade-1/` 示例、`shop/`、`phrases/`、`safety/`、`avatars/`、`skills/` 默认技能、`agents/` 默认角色挂载；见 [课程模型](../03-design/course-model.md)、[Skill 与 AI 角色](../03-design/modules/agents.md)） |
+| `apps/web/`（child/、parent/、admin/ 三个路由块） | `apps/web/src/features/{child,parent}`（孩子端与家长中心，两个懒加载路由块）；管理端拆为独立应用 `apps/admin/src/features/{studio,skills,agents,runs,courses,pets,yahaha,rules,families,settings,audit}`（ADR 0015） |
+| `packages/shared/`（API 与课程包 Zod、错误码、规则常量） | `packages/contracts`（API Zod、错误码）、`packages/rules`（规则常量与纯函数）、`packages/seed-schema`（原 content-schema：课程文档、模板与题型 Zod、K 规则、内置数据模式）、`packages/ui`（主题与基础组件）、`packages/skill-format`（SKILL.md 格式与校验） |
+| `packages/content-tools/`（validate / build / import / gen-audio / legacy-convert） | `tools/validate-seeds`（原 validate-content，校验 `seeds/`）、`tools/safety-eval`（儿童安全评测）；导入为 `apps/api` 的 `xingya course:import`（示例课程 → 草稿）；构建期音频（gen-audio）与课程包组装（build）**取消**（[ADR 0010](../adr/0010-oss-cdn-publish-time-piper.md)）；旧内容转换（legacy-convert）取消，首发课程在后台制作 |
+| `content/` | `seeds/`（ADR 0015 由 `content/` 改名）：`course-templates/`、`skills/`、`agents/`、`safety/`、`phrases/`、`avatars/`、`shop/`、`samples/english/grade-1/`（仅作示例）；见 [seeds/README.md](../../seeds/README.md)、[课程模型](../03-design/course-model.md)、[Skill 与 AI 角色](../03-design/modules/agents.md) |
 | `db/migrations/`（V001__init.sql） | `db/migrations/0001_init.sql`、`db/roles.sql`、`db/seeds/`、`db/verify/` |
 | `deploy/` | `deploy/{nginx,systemd,scripts}` |
-| `e2e/` | `apps/web/e2e/`；集成测试在 `apps/api/test/integration/` |
+| `e2e/` | `apps/web/e2e/`、`apps/admin/e2e/`；服务端测试在 `apps/api/test/{unit,integration,concurrency,safety}/` |
 | `docs/` | `docs/01-requirements` … `06-releases`、`docs/adr`、`docs/reviews` |
 
 ## 哪些内容上服务器
@@ -273,13 +343,12 @@ xingya/
 | 仓库目录 | 是否上服务器 | 说明 |
 | --- | --- | --- |
 | `apps/api` | 是 | 编译为服务产物 → `releases/<ts-version>/api/`；`db/migrations` 与 `db/roles.sql` 随之打包 |
-| `apps/web` | 是 | Vite 构建产物（含 PWA 外壳）→ `releases/<ts-version>/web/` |
-| `packages/*` | 间接 | 不单独部署，构建时编译进 api 与 web 的产物 |
-| `content/templates`、`phrases`、`safety`、`avatars` | 间接 | 编译进 api 产物（模板定义、短语、安全词表、头像清单） |
-| `content/english`、`content/shop` | 按需 | 不随部署导入；需要时由运维命令 `xingya course:import`（导入为草稿）、`xingya shop:import` 写入数据库与 OSS |
-| `content/skills`、`content/agents` | 按需 | 首次部署后由运维执行一次 `xingya skills:seed` 导入为草稿（幂等，不覆盖后台修改）；之后技能与角色只在后台维护 |
+| `apps/web` | 是 | Vite 构建产物（含 PWA 外壳）→ `releases/<ts-version>/web/`（主域名；不含任何后台代码） |
+| `apps/admin` | 是 | Vite 构建产物 → `releases/<ts-version>/admin/`（后台子域名 `admin.<域名>`，不经 CDN） |
+| `packages/*` | 间接 | 不单独部署，构建时编译进 api、web、admin 的产物 |
+| `seeds/` | 是 | → `releases/<ts-version>/seeds/`。`course-templates`、`safety`、`phrases`、`avatars`：api 启动时读取，不入库；`shop`、`skills`、`agents`：每次部署由 `xingya seeds:apply` 只插入缺失行（不覆盖后台修改）；`samples`：只在运维手动 `xingya course:import` 时导入为草稿 |
 | `tools/*` | 否 | 只在 CI 与本地运行 |
-| `db/seeds`、`db/verify` | 否 | 开发与验证用 |
+| `db/seeds`、`db/verify` | 否 | 开发与 e2e 的 SQL 示例行、结构验证（`db/seeds` 与顶层 `seeds/` 不同，见 `db/seeds/README.md`） |
 | `deploy/nginx` | 是 | → `/etc/nginx/` |
 | `deploy/systemd` | 是 | → `/etc/systemd/system/` |
 | `deploy/scripts` | 是 | → `/opt/xingya/scripts/` |
@@ -293,8 +362,10 @@ xingya/
 /opt/xingya/
   releases/
     <ts-version>/            # 例：20261021-2056-6b463ed（时间戳 + 提交短哈希）
-      api/                   # 服务编译产物（含模板、短语、安全词表）+ db/migrations + db/roles.sql
-      web/                   # 前端构建产物
+      api/                   # 服务编译产物 + db/migrations + db/roles.sql
+      web/                   # 孩子端与家长中心构建产物（主域名）
+      admin/                 # 系统管理端构建产物（admin.<域名>）
+      seeds/                 # 内置数据（模板、安全词表与守则、短语、头像、默认技能与角色、装扮、示例）
   current -> releases/<ts-version>   # 当前版本；回滚 = 把软链接切回上一个发布并重启
   scripts/                   # 来自 deploy/scripts：bootstrap、deploy、rollback、backup、alerts
   piper/

@@ -13,7 +13,7 @@ ADR 0003 把课程放在仓库 `content/`，改内容必须走一次发布。新
 - 进行中的作答固定在开始时的版本；进度按 `(course_id, level_key)` 跨版本保留。
 - 共享词库 `words` / `word_senses`：同学科同拼写只有一个词；义项 ID 稳定、释义不可改（列级授权），复习条目绑定义项，因此多个课程复用同一个词时复习不重复。
 - 题目拆为 `questions.visible`（CHECK 拒绝答案字段）与 `question_answers`；答案只在服务端判分时读取，选项每次下发时用 `crypto.randomInt` 打乱。
-- 示例课程以 JSON 文件放在 `content/`，用 `xingya course:import` 导入为草稿（重复导入不产生重复草稿），再走同一检查与发布流程。
+- 示例课程以 JSON 文件放在仓库（现为 `seeds/samples/`，ADR 0015 由 `content/` 改名），用 `xingya course:import` 导入为草稿（重复导入不产生重复草稿），再走同一检查与发布流程。
 
 ## 后果
 可在线编辑、审核、回滚到上一版本（发布旧版本的副本）；历史作答始终能追溯到当时的题目；表数增加，发布需要事务内批量写入。

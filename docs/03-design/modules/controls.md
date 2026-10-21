@@ -16,7 +16,7 @@ child_controls, course_overrides, usage_days
 ## 边界
 
 - 其他模块只能通过本模块的 `index.ts` 调用它（[§3.4](../../02-solution/overview.md) 边界规则）；`repo.ts` 只访问上面列出的表。
-- 计划文件：`apps/api/src/modules/controls/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`、`*.test.ts`。
+- 计划文件：`apps/api/src/modules/controls/` 下的 `index.ts`、`routes.ts`、`service.ts`、`repo.ts`；单元测试在 `apps/api/test/unit/controls/`。
 
 ## 接口（原 §3.5）
 

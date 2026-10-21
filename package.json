@@ -5,5 +5,17 @@
   "description": "星芽学园：面向家庭的儿童英语学习系统",
   "engines": {
     "node": ">=24"
-  }
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "apps/admin",
+    "packages/contracts",
+    "packages/rules",
+    "packages/ui",
+    "packages/seed-schema",
+    "packages/skill-format",
+    "tools/validate-seeds",
+    "tools/safety-eval"
+  ]
 }

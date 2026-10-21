@@ -71,7 +71,7 @@ CREATE TABLE children (
   id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   family_id          BIGINT UNSIGNED NOT NULL,
   nickname           VARCHAR(20)  NOT NULL,
-  avatar_key         VARCHAR(48)  NOT NULL,                  -- 仓库 content/avatars 中的头像键
+  avatar_key         VARCHAR(48)  NOT NULL,                  -- 仓库 seeds/avatars 中的头像键
   grade              TINYINT UNSIGNED NOT NULL,
   pin_hash           VARCHAR(255) NOT NULL,                  -- 4 位 PIN 的 scrypt 哈希
   username           VARCHAR(32)  NULL,                      -- 可选：其他设备登录用
@@ -338,7 +338,7 @@ CREATE TABLE skills (                                        -- 技能身份；�
   status              ENUM('active','disabled') NOT NULL DEFAULT 'active',
   current_version_id  BIGINT UNSIGNED NULL,                  -- “跟随最新发布”指向的版本；回滚 = 指回较早的已发布版本
   version             INT UNSIGNED NOT NULL DEFAULT 1,
-  created_by_admin_id BIGINT UNSIGNED NULL,                  -- NULL = 系统技能或 skills:seed 导入的默认技能
+  created_by_admin_id BIGINT UNSIGNED NULL,                  -- NULL = 系统技能或 seeds:apply 导入的默认技能
   created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
@@ -404,7 +404,7 @@ CREATE TABLE skill_allowed_agents (                          -- 技能侧角色�
   skill_id            INT UNSIGNED NOT NULL,
   agent_id            SMALLINT UNSIGNED NOT NULL,
   audience            ENUM('admin','child','parent') NOT NULL,   -- 两个复合外键同时成立 ⇒ 技能与角色受众一致
-  added_by_admin_id   BIGINT UNSIGNED NULL,                  -- NULL = skills:seed
+  added_by_admin_id   BIGINT UNSIGNED NULL,                  -- NULL = seeds:apply
   revoked_at          DATETIME(3)  NULL,                     -- 撤销后不能再挂载、运行时跳过（历史版本仍可追溯）
   revoked_by_admin_id BIGINT UNSIGNED NULL,
   created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -638,7 +638,7 @@ CREATE TABLE courses (                                       -- 课程身份（�
   subject             VARCHAR(16)  NOT NULL,
   grade               TINYINT UNSIGNED NOT NULL,
   sort_order          INT          NOT NULL,
-  template_id         VARCHAR(48)  NOT NULL,                 -- 仓库 content/templates 中的模板 ID
+  template_id         VARCHAR(48)  NOT NULL,                 -- 仓库 seeds/course-templates 中的模板 ID
   current_version_id  BIGINT UNSIGNED NULL,                  -- 孩子看到的已发布版本；NULL = 未发布
   status              ENUM('active','retired') NOT NULL DEFAULT 'active',
   created_by_admin_id BIGINT UNSIGNED NOT NULL,
@@ -1310,8 +1310,8 @@ CREATE TABLE messages (
   recipient_parent_id BIGINT UNSIGNED NULL,
   kind                ENUM('text','phrase','emoji') NOT NULL,
   body                VARCHAR(200) NULL,                     -- 仅家庭内 text
-  phrase_key          VARCHAR(48)  NULL,                     -- 仓库 content/phrases/phrases.json 的键
-  emoji_key           VARCHAR(32)  NULL,                     -- 仓库 content/phrases/emoji.json 白名单的键
+  phrase_key          VARCHAR(48)  NULL,                     -- 仓库 seeds/phrases/phrases.json 的键
+  emoji_key           VARCHAR(32)  NULL,                     -- 仓库 seeds/phrases/emoji.json 白名单的键
   created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   read_at             DATETIME(3)  NULL,
   hidden_at           DATETIME(3)  NULL,                     -- 举报后对举报方隐藏 / 管理员处理后隐藏
@@ -1616,9 +1616,9 @@ CROSS JOIN (
   UNION ALL SELECT 3, '守护', 12, '["happy-wave"]'
   UNION ALL SELECT 4, '星耀', 20, '["cheer-spin"]'
 ) s;
--- 系统技能：儿童安全（不能停用；内容由 xingya skills:seed 从仓库 content/skills/child-safety/ 导入）
+-- 系统技能：儿童安全（不能停用；内容由 xingya seeds:apply 从仓库 seeds/skills/child-safety/ 导入）
 INSERT INTO skills (id, skill_key, audience, is_system) VALUES (1, 'child-safety', 'child', 1);
--- 默认 7 个 AI 角色（开放问题 Q19–Q21：已默认，可调整）。v1 为草稿：skills:seed 挂载默认技能后，由管理员审核发布才能运行。
+-- 默认 7 个 AI 角色（开放问题 Q19–Q21：已默认，可调整）。v1 为草稿：seeds:apply 挂载默认技能后，由管理员审核发布才能运行。
 INSERT INTO agents (id, agent_key, audience, is_system) VALUES
   (1, 'course-designer', 'admin', 1),
   (2, 'art-designer',    'admin', 1),

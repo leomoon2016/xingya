@@ -1,6 +1,7 @@
 # ADR 0003：内容即代码，构建期生成发音
 
 - 状态：已被 ADR 0008、0010 取代（2026-10-21）
+- 注：本文中的仓库目录 `content/` 已于 2026-10-21 改名为 `seeds/`（[ADR 0015](0015-admin-app-and-seeds.md)）；本文作为历史记录保留原文。
 
 > 本决策已失效：课程改为入库并版本化（[ADR 0008](0008-db-versioned-courses-word-bank.md)），音频改为发布时生成并放 OSS + CDN（[ADR 0010](0010-oss-cdn-publish-time-piper.md)）。以下原文仅作历史记录。
 - 日期：2026-10-21

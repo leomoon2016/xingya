@@ -4,8 +4,8 @@
 
 - 孩子：在家庭设备上点头像 + 4 位 PIN 进入；闯关（9 种题型，逐题反馈）、间隔复习；用星星在商店换原创装扮、申请家长定义的现实奖励；用学习得到的星星或碎片领养**学习伙伴**并陪它成长；通关后点开藏匿点寻找**呀哈哈**、收集图鉴；与兄弟姐妹及（家长批准的）好友家庭互动；与呀哈哈队长 AI 聊天（面向孩子的 AI 角色，不保存对话）。
 - 家长：管理孩子档案与设备、设置每日时长与可用时段、查看每日报告与周报邮件、审批兑换与好友请求。
-- 系统管理员：后台 **AI 工作室**——设计伙伴与呀哈哈款式、上传资料由 AI 生成课程、用一句话描述投放规则；**技能库**（版本化提示词包，兼容 SKILL.md，无可执行代码）与 **AI 角色**（课程设计师、美术设计师、配音师、活动策划、质检员、运营分析师）分工执行，可串成流水线；每个页面有一句话框。AI 只写草稿，所有生成内容先预估费用、经审核才发布，全站与角色月度预算有上限。
-- 技术：模块化单体（Node 24 + Fastify 5 + Kysely + Zod + mysql2），MySQL 8.4 只监听本机，Nginx，单台阿里云 ECS；课程存数据库并版本化（已发布版本不可修改）；素材放阿里云 OSS + CDN；发音在课程发布时由 Piper 一次性生成。
+- 系统管理员：独立的后台应用（`apps/admin`，部署在 `admin.<域名>` 子域名，独立 CSP，孩子端不含后台代码）中的 **AI 工作室**——设计伙伴与呀哈哈款式、上传资料由 AI 生成课程、用一句话描述投放规则；**技能库**（版本化提示词包，兼容 SKILL.md，无可执行代码）与 **AI 角色**（课程设计师、美术设计师、配音师、活动策划、质检员、运营分析师）分工执行，可串成流水线；每个页面有一句话框。AI 只写草稿，所有生成内容先预估费用、经审核才发布，全站与角色月度预算有上限。
+- 技术：模块化单体（Node 24 + Fastify 5 + Kysely + Zod + mysql2），MySQL 8.4 只监听本机，Nginx，单台阿里云 ECS；课程存数据库并版本化（已发布版本不可修改）；素材放阿里云 OSS + CDN；发音在课程发布时由 Piper 一次性生成。仓库分为 `apps/{api,web,admin}`、共享包 `packages/`、内置数据 `seeds/`（随发布部署，见 [seeds/README.md](seeds/README.md)）、`db/`、`deploy/`、`tools/`。
 
 当前状态：**只有设计文档与目录骨架，尚无产品代码**。从 [docs/README.md](docs/README.md) 开始阅读。
 
@@ -16,6 +16,24 @@ xingya/
 ├── .github/
 │   └── workflows/
 ├── apps/
+│   ├── admin/
+│   │   ├── e2e/
+│   │   └── src/
+│   │       ├── app/
+│   │       ├── components/
+│   │       ├── features/
+│   │       │   ├── agents/
+│   │       │   ├── audit/
+│   │       │   ├── courses/
+│   │       │   ├── families/
+│   │       │   ├── pets/
+│   │       │   ├── rules/
+│   │       │   ├── runs/
+│   │       │   ├── settings/
+│   │       │   ├── skills/
+│   │       │   ├── studio/
+│   │       │   └── yahaha/
+│   │       └── lib/
 │   ├── api/
 │   │   ├── src/
 │   │   │   ├── modules/
@@ -30,9 +48,23 @@ xingya/
 │   │   │   │   ├── social/
 │   │   │   │   ├── stars/
 │   │   │   │   └── studio/
+│   │   │   │       ├── agents/
+│   │   │   │       ├── assets/
+│   │   │   │       ├── jobs/
+│   │   │   │       ├── providers/
+│   │   │   │       ├── runner/
+│   │   │   │       ├── skills/
+│   │   │   │       └── tools/
 │   │   │   └── platform/
+│   │   │       ├── auth/
+│   │   │       ├── config/
+│   │   │       ├── db/
+│   │   │       └── logging/
 │   │   └── test/
-│   │       └── integration/
+│   │       ├── concurrency/
+│   │       ├── integration/
+│   │       ├── safety/
+│   │       └── unit/
 │   └── web/
 │       ├── e2e/
 │       ├── public/
@@ -40,36 +72,22 @@ xingya/
 │           ├── app/
 │           ├── components/
 │           ├── features/
-│           │   ├── admin/
-│           │   │   └── studio/
-│           │   │       ├── agents/
-│           │   │       ├── courses/
-│           │   │       ├── pets/
-│           │   │       ├── rules/
-│           │   │       ├── runs/
-│           │   │       ├── skills/
-│           │   │       └── yahaha/
-│           │   ├── album/
-│           │   ├── chat/
-│           │   ├── companion/
-│           │   ├── discovery/
-│           │   ├── learn/
-│           │   ├── login/
-│           │   ├── parent/
-│           │   ├── review/
-│           │   ├── shop/
-│           │   └── social/
+│           │   ├── child/
+│           │   │   ├── album/
+│           │   │   ├── chat/
+│           │   │   ├── companion/
+│           │   │   ├── discovery/
+│           │   │   ├── learn/
+│           │   │   ├── login/
+│           │   │   ├── review/
+│           │   │   ├── shop/
+│           │   │   └── social/
+│           │   └── parent/
+│           │       ├── approvals/
+│           │       ├── controls/
+│           │       ├── dashboard/
+│           │       └── reports/
 │           └── lib/
-├── content/
-│   ├── agents/
-│   ├── avatars/
-│   ├── english/
-│   │   └── grade-1/
-│   ├── phrases/
-│   ├── safety/
-│   ├── shop/
-│   ├── skills/
-│   └── templates/
 ├── db/
 │   ├── migrations/
 │   │   └── 0001_init.sql
@@ -125,33 +143,66 @@ xingya/
 │   │   ├── characters/
 │   │   ├── components/
 │   │   ├── flows/
+│   │   │   ├── admin/
+│   │   │   ├── child/
+│   │   │   └── parent/
 │   │   ├── mockups/
 │   │   │   ├── admin/
-│   │   │   ├── album/
-│   │   │   ├── chat/
-│   │   │   ├── companion/
-│   │   │   ├── discovery/
-│   │   │   ├── learn/
-│   │   │   ├── login/
-│   │   │   ├── parent/
-│   │   │   ├── review/
-│   │   │   ├── shop/
-│   │   │   ├── social/
-│   │   │   └── studio/
+│   │   │   │   ├── agents/
+│   │   │   │   ├── audit/
+│   │   │   │   ├── courses/
+│   │   │   │   ├── families/
+│   │   │   │   ├── pets/
+│   │   │   │   ├── rules/
+│   │   │   │   ├── runs/
+│   │   │   │   ├── settings/
+│   │   │   │   ├── skills/
+│   │   │   │   ├── studio/
+│   │   │   │   └── yahaha/
+│   │   │   ├── child/
+│   │   │   │   ├── album/
+│   │   │   │   ├── chat/
+│   │   │   │   ├── companion/
+│   │   │   │   ├── discovery/
+│   │   │   │   ├── learn/
+│   │   │   │   ├── login/
+│   │   │   │   ├── review/
+│   │   │   │   ├── shop/
+│   │   │   │   └── social/
+│   │   │   └── parent/
+│   │   │       ├── approvals/
+│   │   │       ├── controls/
+│   │   │       ├── dashboard/
+│   │   │       └── reports/
 │   │   ├── tokens/
 │   │   └── wireframes/
 │   │       ├── admin/
-│   │       ├── album/
-│   │       ├── chat/
-│   │       ├── companion/
-│   │       ├── discovery/
-│   │       ├── learn/
-│   │       ├── login/
-│   │       ├── parent/
-│   │       ├── review/
-│   │       ├── shop/
-│   │       ├── social/
-│   │       └── studio/
+│   │       │   ├── agents/
+│   │       │   ├── audit/
+│   │       │   ├── courses/
+│   │       │   ├── families/
+│   │       │   ├── pets/
+│   │       │   ├── rules/
+│   │       │   ├── runs/
+│   │       │   ├── settings/
+│   │       │   ├── skills/
+│   │       │   ├── studio/
+│   │       │   └── yahaha/
+│   │       ├── child/
+│   │       │   ├── album/
+│   │       │   ├── chat/
+│   │       │   ├── companion/
+│   │       │   ├── discovery/
+│   │       │   ├── learn/
+│   │       │   ├── login/
+│   │       │   ├── review/
+│   │       │   ├── shop/
+│   │       │   └── social/
+│   │       └── parent/
+│   │           ├── approvals/
+│   │           ├── controls/
+│   │           ├── dashboard/
+│   │           └── reports/
 │   ├── 05-plans/
 │   ├── 06-releases/
 │   │   ├── v1.0/
@@ -174,15 +225,30 @@ xingya/
 │   │   ├── 0011-fragments-second-currency.md
 │   │   ├── 0012-server-decided-discovery-ai-filled-rules.md
 │   │   ├── 0013-keyframe-motion-template-animation.md
-│   │   └── 0014-skills-and-agent-roles.md
+│   │   ├── 0014-skills-and-agent-roles.md
+│   │   └── 0015-admin-app-and-seeds.md
 │   └── reviews/
 │       └── 2026-10-21-整体评审.md
 ├── packages/
-│   ├── content-schema/
 │   ├── contracts/
-│   └── rules/
+│   ├── rules/
+│   ├── seed-schema/
+│   ├── skill-format/
+│   └── ui/
+├── seeds/
+│   ├── agents/
+│   ├── avatars/
+│   ├── course-templates/
+│   ├── phrases/
+│   ├── safety/
+│   ├── samples/
+│   │   └── english/
+│   │       └── grade-1/
+│   ├── shop/
+│   └── skills/
 ├── tools/
-│   └── validate-content/
+│   ├── safety-eval/
+│   └── validate-seeds/
 ├── .gitignore
 ├── CHANGELOG.md
 ├── package.json

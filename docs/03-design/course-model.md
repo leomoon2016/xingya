@@ -12,10 +12,10 @@
 | 草稿 | `course_drafts.document`（JSON，§7.3） | 唯一可编辑的地方；含答案与解析 |
 | 已发布版本 | `course_versions` → `levels` → `questions`（可见部分）+ `question_answers`（答案部分） | 只追加，应用账号不能修改或删除 |
 | 素材 | `assets` + OSS | 草稿在 `draft/`，发布时复制到 `pub/`（CDN） |
-| 模板定义 | 仓库 `content/templates/<id>.json` | 随 api 打包；草稿与版本记录 `template_id` + `template_version` |
-| 示例课程 | 仓库 `content/english/grade-1/<courseId>.json` | 与 §7.3 草稿文档同一结构；`xingya course:import` 导入为草稿 |
+| 模板定义 | 仓库 `seeds/course-templates/<id>.json` | 随发布包部署（`seeds/`），api 启动时读取、不入库；草稿与版本记录 `template_id` + `template_version` |
+| 示例课程 | 仓库 `seeds/samples/english/grade-1/<courseId>.json` | 与 §7.3 草稿文档同一结构；`xingya course:import` 导入为草稿 |
 
-### 7.2 模板定义（`content/templates/<id>.json`，Zod 模式在 `packages/content-schema`）
+### 7.2 模板定义（`seeds/course-templates/<id>.json`，Zod 模式在 `packages/seed-schema`）
 ```jsonc
 {
   "id": "word-quest", "templateVersion": 1, "name": "单词闯关课",
@@ -76,7 +76,7 @@
 判分：选择类比较选项 ID；`order` 整个序列相等才算对；`spell` 规范化后与 `text` 或 `accept[]` 之一相同（[learning 需求 §4.1.3](../01-requirements/modules/learning.md#413-题型9-种)）。
 
 ### 7.4 自动检查规则（K 规则）
-草稿每次修改后运行；任何错误使 `check_passed = 0`，题目在编辑器中标红并写明规则号与原因。示例课程在 CI 中由 `tools/validate-content` 运行同一套规则。
+草稿每次修改后运行；任何错误使 `check_passed = 0`，题目在编辑器中标红并写明规则号与原因。示例课程在 CI 中由 `tools/validate-seeds` 运行同一套规则。
 
 | # | 规则 |
 | --- | --- |

@@ -34,11 +34,11 @@
 | 领域 | 措施 |
 | --- | --- |
 | 传输 | 全站 HTTPS（TLS 1.2+），HSTS，HTTP 跳转 HTTPS；证书自动续期，到期前 14 天告警 |
-| 浏览器 | CSP（`default-src 'self'`，`img-src`/`media-src`/`connect-src` 只额外允许本站 CDN 域名，无内联脚本、无其他第三方源）、`X-Frame-Options: DENY`、`Referrer-Policy: same-origin`、`Permissions-Policy: microphone=(self)` |
-| CSRF | SameSite=Lax Cookie + Origin 校验 + 写请求必需自定义请求头（无 CORS） |
+| 浏览器 | 主站与后台是两个站点、两套 CSP（ADR 0015）。主站 CSP（`default-src 'self'`，`img-src`/`media-src`/`connect-src` 只额外允许本站 CDN 域名，无内联脚本、无其他第三方源）；后台 `admin.<域名>` 另有更严格的 CSP（只额外允许 CDN 与 OSS 签名 URL/直传地址，`frame-ancestors 'none'`，`X-Robots-Tag: noindex`，不做 PWA 与 Service Worker）；孩子端构建产物不含任何后台代码（CI 检查）；`X-Frame-Options: DENY`、`Referrer-Policy: same-origin`、`Permissions-Policy: microphone=(self)` |
+| CSRF | 主站 SameSite=Lax Cookie、后台 SameSite=Strict Cookie（两站 Cookie 都不设 `Domain`，互不携带）+ Origin 校验 + 写请求必需自定义请求头（无 CORS） |
 | 口令 | scrypt（N=2^15, r=8, p=1）；并发哈希数限制为 4；令牌/会话库内只存 SHA-256 |
 | 暴力破解 | 家长 10 次失败锁 15 分钟；孩子 5 次锁 15 分钟；IP 限流；好友码每天 10 次 |
-| 管理员 | 强制 TOTP；会话短；所有操作写审计 |
+| 管理员 | 只在后台子域名登录；`/api/v1/admin/*` 只接受后台域名的请求（主站 Nginx 直接 404，服务端按 Host 再拒绝）；强制 TOTP；会话短；所有操作写审计；可选运维 IP 白名单（默认关闭） |
 | 租户隔离 | 主体推导 familyId + 复合外键 + 自动生成的跨家庭 404 测试 |
 | 输入 | 所有接口 Zod 严格模式；请求体 ≤ 64 KB（资料上传除外：管理端直传 OSS 签名 URL，≤ 20 MB，服务端校验类型与文件头；docx/pptx 解压总量 ≤ 100 MB、条目数 ≤ 2000，抽取在有堆上限的 worker 线程中进行，防压缩炸弹拖垮服务进程）；SQL 全部经 Kysely 参数化 |
 | 作答防作弊 | 开始作答只下发可见部分（数据库 CHECK 拒绝可见部分含答案字段），选项与词块 ID 换成每次作答的随机令牌，不下发义项 ID；判分、星星、碎片、经验、藏匿点内容全部由服务端决定；藏匿点揭晓校验归属；随机数用 `crypto.randomInt` |
@@ -93,10 +93,12 @@
 - 夜间汇总、周报入队去重、邮件重试、数据清理、账本对账。
 - 课程发布：草稿 → 审核 → 发布生成新版本；示例课程导入为草稿，重复导入不产生重复草稿。
 
-### 10.3 模板与仓库内容校验
-`tools/validate-content` 校验 `content/templates/`、示例课程、装扮初始数据、短语、安全词表、提示词禁止词表；示例课程同时跑课程自动检查（K 规则），CI 失败即阻断。默认技能 `content/skills/`（SKILL.md 可解析、模式可编译、工具都在目录中、无发布类工具）、默认角色 `content/agents/defaults.json`（挂载的技能都存在、受众一致、儿童角色挂载 `child-safety`）、系统守则 `content/safety/agent-guard.md` 与儿童安全测试集 `content/safety/tests/` 同样在此校验。
+### 10.3 内置数据（`seeds/`）校验
+`tools/validate-seeds` 校验 `seeds/course-templates/`、示例课程、装扮初始数据、短语、安全词表、提示词禁止词表；示例课程同时跑课程自动检查（K 规则），CI 失败即阻断。默认技能 `seeds/skills/`（SKILL.md 可解析、模式可编译、工具都在目录中、无发布类工具）、默认角色 `seeds/agents/defaults.json`（挂载的技能都存在、受众一致、儿童角色挂载 `child-safety`）、系统守则 `seeds/safety/agent-guard.md` 与儿童安全测试集 `seeds/safety/tests/` 同样在此校验；儿童技能或安全测试集变化时，CI 另运行 `tools/safety-eval`（儿童安全评测）。服务端测试分布：`apps/api/test/unit`（单元）、`integration`（真实 MySQL）、`concurrency`（并发与幂等）、`safety`（儿童安全规则）。
 
 ### 10.4 端到端（Playwright，Chromium + WebKit）
+孩子端与家长中心用例在 `apps/web/e2e/`；后台用例（工作室、技能与 AI 角色、审核发布、家庭与举报、设置）在 `apps/admin/e2e/`，跨两个应用的用例（如“发布 → 孩子端看到新版本”）放在 `apps/admin/e2e/` 并同时打开两个站点。
+
 | 用例 | 要点 |
 | --- | --- |
 | PIN 登录 | 家长标记家庭设备 → 头像墙 → 错 PIN 5 次锁定 → 家长解锁 → 正确 PIN 进入 |

@@ -1,6 +1,6 @@
 # ADR 0001：采用模块化单体
 
-- 状态：已接受
+- 状态：已接受（2026-10-21 由 ADR 0015 补充仓库应用划分）
 - 日期：2026-10-21
 - 依据：《星芽学园全新系统设计规格》（已由用户逐节确认）
 
@@ -9,6 +9,8 @@
 
 ## 决策
 一个 TypeScript 服务（Node 24 + Fastify 5 + Kysely + Zod + mysql2），分为八个模块（family、content、learning、stars、social、chat、controls、reports；2026-10-21 设计变更后增加 companion、discovery、studio，共十一个，见[方案总览](../02-solution/overview.md)），各自拥有自己的表，只通过 `index.ts` 暴露函数；跨模块写入在同一事务内完成；边界由 CI 检查。
+
+仓库应用划分（2026-10-21 目录调整，[ADR 0015](0015-admin-app-and-seeds.md)）：服务端仍是一个应用 `apps/api`（平台层 `src/platform/{db,auth,logging,config}`，模块在 `src/modules/`）；前端为两个应用——`apps/web`（孩子端与家长中心）与 `apps/admin`（系统管理端，独立子域名）；共享代码在 `packages/{contracts,rules,ui,seed-schema,skill-format}`；内置数据在 `seeds/`。
 
 ## 后果
 部署与运维简单，事务一致性容易保证；模块边界需要靠工具守住；将来若要拆服务，可按模块边界拆。

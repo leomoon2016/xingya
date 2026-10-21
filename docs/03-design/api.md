@@ -9,7 +9,8 @@
 ### 5.1 约定
 - 基础路径 `/api/v1`；JSON（UTF-8）；字段 camelCase；时间用 ISO 8601 UTC，本地日期用 `YYYY-MM-DD`。
 - 鉴权：Cookie `xy_sid`（以后客户端可用 `Authorization: Bearer`）；家庭设备接口另需 `xy_device`。
-- 所有写请求（含注册、登录等未登录接口）都必须带 `X-Client-Request-Id`：对已登录写请求它是幂等键（[§4.5.1](../01-requirements/nfr.md)），对未登录接口只用于防跨站伪造。服务端只接受同源请求：校验 `Origin`，不开放 CORS；由于自定义请求头会触发预检而预检不被允许，跨站伪造请求无法成功。
+- 两个站点（ADR 0015）：主站 `<域名>` 提供孩子、家长与公开接口；`/api/v1/admin/*` **只**在后台域名 `admin.<域名>` 上可用——主站 Nginx 对该前缀返回 404，服务端也按 `Host` 拒绝（返回 404）。后台会话 Cookie `xy_admin_sid` 只发给后台域名（不设 `Domain`、`Secure`、`HttpOnly`、`SameSite=Strict`）；主站的 `xy_sid` 同样不设 `Domain`，两站互不携带。管理员主体只能由后台 Cookie 建立。
+- 所有写请求（含注册、登录等未登录接口）都必须带 `X-Client-Request-Id`：对已登录写请求它是幂等键（[§4.5.1](../01-requirements/nfr.md)），对未登录接口只用于防跨站伪造。服务端只接受同源请求：校验 `Origin`（主站与后台各自只接受本站源），不开放 CORS；由于自定义请求头会触发预检而预检不被允许，跨站伪造请求无法成功。
 - 需要乐观锁的请求体带 `version`。列表接口用游标分页 `?cursor=&limit=`（limit ≤ 50）。
 - 所有请求/响应体由 `packages/contracts` 中的 Zod 模式定义，前后端共用；未知字段拒绝。
 - 跨家庭的资源（别家的孩子、消息、兑换等）一律返回 `404`，不暴露存在性。
@@ -235,7 +236,7 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | GET · POST /admin/studio/quick-tasks · PATCH · DELETE /admin/studio/quick-tasks/:id · POST /admin/studio/quick-tasks/:id/run | 快捷任务（DELETE = 归档）；运行同样先预估 |
 | GET /admin/studio/tools | 内置工具目录（只读：名称、受众、只读/写草稿/生成、注册模块） |
 
-**admin**（前缀 `/admin`）
+**admin**（前缀 `/admin`；只在后台域名可用，见 §5.1）
 
 | 方法 路径 | 主体 | 说明 |
 | --- | --- | --- |

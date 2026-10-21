@@ -26,7 +26,7 @@
 - “冻结中”= 该孩子待审批兑换的价格之和（`redemptions.status='pending'`）。孩子界面显示“可用 N 颗，冻结 M 颗”，以及碎片余额。
 
 ## 4.2.2 商店与装扮
-- 装扮（`head`/`body`/`accessory` 三个槽位）由系统管理员在后台维护：ID、名称、价格（1–1000）、图片（素材库）、上架/下架；初始数据来自仓库 `content/shop/`。图片必须原创或已授权（提示词禁止词表同样适用于上传的名称与描述）。
+- 装扮（`head`/`body`/`accessory` 三个槽位）由系统管理员在后台维护：ID、名称、价格（1–1000）、图片（素材库）、上架/下架；初始数据来自仓库 `seeds/shop/`。图片必须原创或已授权（提示词禁止词表同样适用于上传的名称与描述）。
 - 购买 `POST /shop/purchases {itemId, expectedPrice}`：服务端读取**当前**价格；与 `expectedPrice` 不同 → `409 PRICE_CHANGED`（返回新价格，孩子确认后重试）；已下架 → `404`；已拥有 → `409 ALREADY_OWNED`；余额不足 → `409 INSUFFICIENT_STARS`。成功则同一事务写 `purchase` 流水（`source_key = purchase:{itemId}`）与 `child_items`。
 - 每件物品每个孩子只能买一次；无退货、无转赠。下架物品不再出售，已拥有的仍可穿戴。
 - 穿戴：`PUT /me/equipment {slot, itemId | null}`；每个槽位最多一件（唯一键）。学习伙伴不在商店里，见 [companion 需求](companion.md)。
