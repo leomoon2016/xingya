@@ -915,18 +915,17 @@ CREATE TABLE level_progress (                                -- 按 (课程, uni
   course_id       VARCHAR(64)  NOT NULL,
   unit_key        VARCHAR(32)  NOT NULL,
   level_key       VARCHAR(32)  NOT NULL,
-  best_stars      TINYINT UNSIGNED NOT NULL DEFAULT 0,       -- 最佳星级
+  best_stars      TINYINT UNSIGNED NOT NULL,                 -- 最佳星级（1–3；完成一次才有这一行，没有未通过）
   best_accuracy   TINYINT UNSIGNED NOT NULL DEFAULT 0,
   attempts_count  INT UNSIGNED NOT NULL DEFAULT 0,
-  first_passed_at DATETIME(3)  NULL,
+  first_passed_at DATETIME(3)  NOT NULL,                     -- 首次完成（= 通关）时间
   last_attempt_at DATETIME(3)  NOT NULL,
   PRIMARY KEY (child_id, course_id, unit_key, level_key),
   KEY ix_level_progress_family (family_id, child_id),
   CONSTRAINT fk_level_progress_child  FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_level_progress_course FOREIGN KEY (course_id) REFERENCES courses (id),
-  CONSTRAINT ck_level_progress_stars CHECK (best_stars BETWEEN 0 AND 3),
-  CONSTRAINT ck_level_progress_accuracy CHECK (best_accuracy <= 100),
-  CONSTRAINT ck_level_progress_passed CHECK ((best_stars = 0) = (first_passed_at IS NULL))
+  CONSTRAINT ck_level_progress_stars CHECK (best_stars BETWEEN 1 AND 3),
+  CONSTRAINT ck_level_progress_accuracy CHECK (best_accuracy <= 100)
 ) ENGINE=InnoDB;
 
 CREATE TABLE unit_progress (                                 -- 单元进度：按 (课程, unit_key) 记录；结算事务内更新
@@ -935,7 +934,7 @@ CREATE TABLE unit_progress (                                 -- 单元进度：�
   course_id               VARCHAR(64)  NOT NULL,
   unit_key                VARCHAR(32)  NOT NULL,
   level_count             SMALLINT UNSIGNED NOT NULL,        -- 最近一次结算时当前版本中本单元的关卡数
-  levels_passed           SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  levels_passed           SMALLINT UNSIGNED NOT NULL DEFAULT 0,   -- 已完成（通关）的关卡数
   levels_three_star       SMALLINT UNSIGNED NOT NULL DEFAULT 0,  -- 最佳星级 = 3 的关卡数
   first_completed_at      DATETIME(3)  NULL,                 -- 首次全部关卡通过：下一单元第一关从此解锁（之后不再收回）
   first_all_three_star_at DATETIME(3)  NULL,                 -- 首次全部关卡 3 星级：触发 unit_first_all_three_star（只一次）
@@ -962,11 +961,9 @@ CREATE TABLE attempts (                                      -- 只追加：一�
   scored_count      TINYINT UNSIGNED NOT NULL,
   correct_count     TINYINT UNSIGNED NOT NULL,
   accuracy_pct      TINYINT UNSIGNED AS (FLOOR(correct_count * 100 / scored_count)) STORED,
-  stars             TINYINT UNSIGNED AS (CASE WHEN correct_count = scored_count THEN 3            -- 全对 3 星级
-                                              WHEN correct_count * 100 < scored_count * 80 THEN 0     -- 未通过
-                                              WHEN correct_count = scored_count - 1 THEN 2            -- 只错 1 题且 ≥ 80% → 2 星级
-                                              ELSE 1 END) STORED,                                     -- 其余 ≥ 80% → 1 星级（用户 2026-10-22）
-  passed            TINYINT(1)   AS (correct_count * 100 >= scored_count * 80) STORED,
+  stars             TINYINT UNSIGNED AS (CASE WHEN correct_count = scored_count THEN 3            -- 错 0 题 → 3 星级
+                                              WHEN correct_count = scored_count - 1 THEN 2            -- 错 1 题 → 2 星级
+                                              ELSE 1 END) STORED,                                     -- 错 ≥ 2 题 → 1 星级；没有未通过（用户 2026-10-22，按错题数，不看百分比）
   stars_awarded     TINYINT UNSIGNED NOT NULL,               -- 本次实际发放的星星（只发提升差额）
   answers           JSON         NOT NULL,                   -- [{questionId, senseId, response, correct}]
   submitted_at      DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

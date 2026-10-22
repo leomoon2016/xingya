@@ -199,19 +199,22 @@ await expectErr('UNIQUE：同一关同时只有一次未完成作答（再次开
 await expectOk('秘密路线作答（金币小径，题目来自第 1 关）', app, `INSERT INTO plays (id,family_id,child_id,kind,course_version_id,level_id,secret_route,client_request_id,local_date,items) VALUES (6,1,1,'secret',1,1,'coins',?,'2026-10-21','[]')`, [uuid(7)]);
 await expectErr('CHECK：秘密路线作答必须指明路线', app, `INSERT INTO plays (family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items) VALUES (1,1,'secret',1,2,?,'2026-10-21','[]')`, [uuid(8)], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 const att = (play, s, c, aw) => `INSERT INTO attempts (id,family_id,child_id,play_id,course_version_id,level_id,activity_date,scored_count,correct_count,stars_awarded,answers) VALUES (${play},1,1,${play},1,1,'2026-10-21',${s},${c},${aw},'[]')`;
-await expectOk('提交闯关 4/5', app, att(1, 5, 4, 2));
-const [[a1]] = await app.query(`SELECT accuracy_pct,stars,passed FROM attempts WHERE id=1`);
-ok('生成列：4/5 => 80%、只错 1 题 → 2 星级、通过（用户 2026-10-22）', a1.accuracy_pct === 80 && a1.stars === 2 && a1.passed === 1, JSON.stringify(a1));
-await app.query(`${att(2, 8, 7, 0)}; ${att(3, 4, 3, 0)}; ${att(4, 5, 5, 1)}`);
-const [rows] = await app.query(`SELECT accuracy_pct, stars, passed FROM attempts ORDER BY id`);
-ok('生成列：7/8=87%→2 星级；3/4=75%→未通过（错 1 题但不到 80%）；5/5→3 星级', rows[1].stars === 2 && rows[2].passed === 0 && rows[2].stars === 0 && rows[3].stars === 3, JSON.stringify(rows.map(r => [r.accuracy_pct, r.stars, r.passed])));
+await expectOk('提交闯关 3/4（错 1 题）', app, att(1, 4, 3, 2));
+const [[a1]] = await app.query(`SELECT accuracy_pct,stars FROM attempts WHERE id=1`);
+ok('生成列：3/4 => 75%、错 1 题 → 2 星级（按错题数，不看百分比，用户 2026-10-22）', a1.accuracy_pct === 75 && a1.stars === 2, JSON.stringify(a1));
+await app.query(`${att(2, 8, 6, 0)}; ${att(3, 4, 0, 0)}; ${att(4, 5, 5, 1)}`);
+const [rows] = await app.query(`SELECT accuracy_pct, stars FROM attempts ORDER BY id`);
+ok('生成列：6/8 错 2 题 → 1 星级；0/4 全错 → 1 星级（没有未通过）；5/5 → 3 星级', rows[1].stars === 1 && rows[2].stars === 1 && rows[3].stars === 3, JSON.stringify(rows.map(r => [r.accuracy_pct, r.stars])));
 { const [st] = await root.query(`SELECT generation_expression g FROM information_schema.columns WHERE table_schema='xingya' AND table_name='attempts' AND column_name='stars'`);
-  ok('星级生成列含“只错 1 题”分支（scored_count - 1），不再有 90% 阈值', /scored_count` - 1/.test(st[0].g) && !/90/.test(st[0].g), st[0].g.slice(0, 160)); }
+  ok('星级生成列只按错题数（含 scored_count - 1 分支），没有百分比阈值', /scored_count` - 1/.test(st[0].g) && !/80|90|100/.test(st[0].g), st[0].g.slice(0, 160)); }
+{ const [cols] = await root.query(`SELECT column_name c FROM information_schema.columns WHERE table_schema='xingya' AND table_name='attempts' AND column_name='passed'`);
+  ok('闯关记录没有“是否通过”列（每次完成都通关）', cols.length === 0, JSON.stringify(cols)); }
 await expectErr('幂等：同一次作答只产生一条闯关记录', app, `INSERT INTO attempts (family_id,child_id,play_id,course_version_id,level_id,activity_date,scored_count,correct_count,stars_awarded,answers) VALUES (1,1,1,1,1,'2026-10-21',5,4,1,'[]')`, [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：每关计分题至少 4 道', app, `INSERT INTO attempts (family_id,child_id,play_id,course_version_id,level_id,activity_date,scored_count,correct_count,stars_awarded,answers) VALUES (1,1,2,1,1,'2026-10-21',3,3,0,'[]')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_DUP_ENTRY']);
-await expectErr('CHECK：关卡进度的最佳星级与首次通过时间一致', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,best_stars,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',2,NOW())`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：关卡进度最佳星级至少 1（没有 0 星级 / 未通过）', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,best_stars,first_passed_at,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',0,NOW(3),NOW(3))`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('NOT NULL：关卡进度必须有首次通关时间', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,best_stars,first_passed_at,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',2,NULL,NOW(3))`, [], ['ER_BAD_NULL_ERROR']);
 await expectOk('关卡进度按 (课程, unit_key, level_key)：u01/l01 与 u02/l01 各一行', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,best_stars,first_passed_at,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',3,NOW(3),NOW(3)),(1,1,'en-g1-a','u02','l01',1,NOW(3),NOW(3))`);
-await expectErr('UNIQUE：同一单元同一关卡只有一行进度', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',NOW())`, [], ['ER_DUP_ENTRY']);
+await expectErr('UNIQUE：同一单元同一关卡只有一行进度', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,best_stars,first_passed_at,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',1,NOW(3),NOW(3))`, [], ['ER_DUP_ENTRY']);
 await expectOk('单元进度：u01 全部关卡通过且全 3 星级', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count,levels_passed,levels_three_star,first_completed_at,first_all_three_star_at) VALUES (1,1,'en-g1-a','u01',1,1,1,NOW(3),NOW(3))`);
 await expectErr('UNIQUE：同一孩子同一单元只有一行进度（首次全 3 星级只触发一次）', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count) VALUES (1,1,'en-g1-a','u01',4)`, [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：单元已通过关卡数不超过关卡数', app, `INSERT INTO unit_progress (family_id,child_id,course_id,unit_key,level_count,levels_passed) VALUES (1,1,'en-g1-a','u02',4,5)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);

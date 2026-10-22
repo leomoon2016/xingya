@@ -1,5 +1,5 @@
-PASS  从空库应用两次结构指纹一致  — 614a33315180 / 614a33315180
-PASS  表数=82  — {"tables":82,"fks":188,"checks":227,"uniques":94,"generated":19}
+PASS  从空库应用两次结构指纹一致  — e8f0e51fe1f6 / e8f0e51fe1f6
+PASS  表数=82  — {"tables":82,"fks":188,"checks":226,"uniques":94,"generated":18}
 PASS  授权全覆盖：每张表都有应用角色授权  — []
 PASS  xingya 账号只有 @localhost（角色除外）  — [{"user":"xingya_app_role","host":"%"},{"user":"xingya_migrator_role","host":"%"},{"user":"xingya_app","host":"localhost"},{"user":"xingya_migrator","host":"localhost"}]
 PASS  migrator 可执行 DDL
@@ -92,13 +92,15 @@ PASS  UNIQUE：同一关同时只有一次未完成作答（再次开始即恢�
 PASS  作答没有过期时间列（旧系统：未完成的作答一直保留）  — []
 PASS  秘密路线作答（金币小径，题目来自第 1 关）
 PASS  CHECK：秘密路线作答必须指明路线  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_plays_kind' is violated.
-PASS  提交闯关 4/5
-PASS  生成列：4/5 => 80%、只错 1 题 → 2 星级、通过（用户 2026-10-22）  — {"accuracy_pct":80,"stars":2,"passed":1}
-PASS  生成列：7/8=87%→2 星级；3/4=75%→未通过（错 1 题但不到 80%）；5/5→3 星级  — [[80,2,1],[87,2,1],[75,0,0],[100,3,1]]
-PASS  星级生成列含“只错 1 题”分支（scored_count - 1），不再有 90% 阈值  — (case when (`correct_count` = `scored_count`) then 3 when ((`correct_count` * 100) < (`scored_count` * 80)) then 0 when (`correct_count` = (`scored_count` - 1))
+PASS  提交闯关 3/4（错 1 题）
+PASS  生成列：3/4 => 75%、错 1 题 → 2 星级（按错题数，不看百分比，用户 2026-10-22）  — {"accuracy_pct":75,"stars":2}
+PASS  生成列：6/8 错 2 题 → 1 星级；0/4 全错 → 1 星级（没有未通过）；5/5 → 3 星级  — [[75,2],[75,1],[0,1],[100,3]]
+PASS  星级生成列只按错题数（含 scored_count - 1 分支），没有百分比阈值  — (case when (`correct_count` = `scored_count`) then 3 when (`correct_count` = (`scored_count` - 1)) then 2 else 1 end)
+PASS  闯关记录没有“是否通过”列（每次完成都通关）  — []
 PASS  幂等：同一次作答只产生一条闯关记录  — ER_DUP_ENTRY: Duplicate entry '1' for key 'attempts.uq_attempts_play'
 PASS  CHECK：每关计分题至少 4 道  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_attempts_counts' is violated.
-PASS  CHECK：关卡进度的最佳星级与首次通过时间一致  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_level_progress_passed' is violated.
+PASS  CHECK：关卡进度最佳星级至少 1（没有 0 星级 / 未通过）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_level_progress_stars' is violated.
+PASS  NOT NULL：关卡进度必须有首次通关时间  — ER_BAD_NULL_ERROR: Column 'first_passed_at' cannot be null
 PASS  关卡进度按 (课程, unit_key, level_key)：u01/l01 与 u02/l01 各一行
 PASS  UNIQUE：同一单元同一关卡只有一行进度  — ER_DUP_ENTRY: Duplicate entry '1-en-g1-a-u01-l01' for key 'level_progress.PRIMARY'
 PASS  单元进度：u01 全部关卡通过且全 3 星级
@@ -401,5 +403,5 @@ PASS  CHECK：工具循环上限设置不超过 20 步  — ER_CHECK_CONSTRAINT_
 PASS  CHECK：运营分析最小分组 3–50  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_stats_group' is violated.
 PASS  角色本身为锁定账号（不可登录）
 
-结构统计: {"tables":82,"fks":188,"checks":227,"uniques":94,"generated":19}
-合计 402 项，通过 402，失败 0
+结构统计: {"tables":82,"fks":188,"checks":226,"uniques":94,"generated":18}
+合计 404 项，通过 404，失败 0
