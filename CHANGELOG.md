@@ -12,6 +12,7 @@
 - 2026-10-21：目录调整（用户已批准，[ADR 0015](docs/adr/0015-admin-app-and-seeds.md)）——新增独立后台应用 `apps/admin`（独立 Vite 构建、`admin.<域名>` 子域名、独立 CSP，含 `e2e/`）；新增 `packages/ui`、`packages/skill-format`、`tools/safety-eval`；`apps/api/src/platform/{db,auth,logging,config}`、studio 模块子目录 `jobs/assets/skills/agents/runner/tools/providers`、`apps/api/test/{unit,concurrency,safety}`；`docs/04-ui-design` 的流程、线框、效果图按 `child/`、`parent/`、`admin/` 分组；部署步骤新增 `xingya seeds:apply`；整体评审追加“目录调整评审”。
 
 ### 变更
+- 2026-10-22：伙伴最高等级改为 100（用户决定，与旧系统一致）——等级曲线与阶段起始等级（1/20/50/100）照旧系统；`pet_tiers` 默认 `max_level=100`、新增 `xp_quad_div`；复习积分每天 30 的上限保持不变；数据库重新验证 258/258。
 - 2026-10-22：恢复积分（用户决定，[ADR 0017](docs/adr/0017-points-currency.md)）——规则与旧系统完全一致：听发音 +0.1、复习答对 +1（每天 ≤ 30）、单词本听发音（每天 ≤ 10，v1.0 无单词本暂不产生）、跟随伙伴按等级附赠，10 积分换 1 星；复习不再发星星；`0001_init.sql` 的 `ledger`/`balances` 增加 `point` 币种，`plays` 增加伙伴等级快照，日报增加积分列；数据库重新验证 255/255。
 - 2026-10-22：正式系统一直使用马里奥（用户决定，[ADR 0018](docs/adr/0018-mario-game-partner.md)）——恢复游戏搭档（马里奥、林克），第三方 IP 规则增加具名例外，素材放 `seeds/partners/`，AI 工作室仍不生成任天堂角色；新增术语“积分”“换星”“游戏搭档”。
 - 2026-10-22：设备与屏幕（用户决定）——孩子端以平板和电脑横屏为主、手机竖屏可用（紧凑布局）；家长中心响应式；后台桌面优先。新增 [nfr §8.4](docs/01-requirements/nfr.md#84-设备与屏幕)、开放问题 Q29；PRD、界面设计说明、v1.0 变更记录与任务单 03 同步。

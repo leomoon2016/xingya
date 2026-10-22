@@ -45,7 +45,7 @@ submitSpecies / reviewSpecies / publishSpecies(admin, speciesId, {tierId, versio
 ## 规则实现
 - **领养**（一个事务）：`SELECT balances(child, star|fragment) FOR UPDATE` → `pet_dens` 行（无则插入）`FOR UPDATE` → 检查：种类 `published`、未拥有、`stars.learningStarsTotal ≥ tier.adoption_threshold`、`已领养数 < den_base_slots + extra_slots`、当前价格 = `expectedPrice` → `debitInTx(currency, pet_adopt, −价格, pet:adopt:{speciesKey})` → `INSERT child_pets(adopt_ledger_id)`；第一只自动 `is_companion = 1`。
 - **扩建**：`extra_slots = n` 时价格取 `den_slot_prices[n]`，超出数组 → `409 DEN_MAX`；`debitInTx(star, den_expand, source_key = den:expand:{n+1})`；`extra_slots + 1`（乐观锁 `version`）。
-- **经验**：`addXpInTx` 锁跟随伙伴行，`xp += amount`，循环：`need = xp_base + xp_step × (level − 1)`，`xp ≥ need` 则 `xp −= need, level + 1`，直到 `max_level`（满级后经验只累计 `total_xp`）。返回升级次数与新阶段（阶段 = `min_level ≤ level` 的最大 `stage_no`），客户端据此播放升级台词与换形象。
+- **经验**：`addXpInTx` 锁跟随伙伴行，`xp += amount`，循环：`need = xp_base + xp_step × ⌊(level − 1) / 10⌋ + ⌊(level − 1)² / xp_quad_div⌋`（默认 2 / 1 / 200 = 旧系统曲线，最高 100 级），`xp ≥ need` 则 `xp −= need, level + 1`，直到 `max_level`（满级后经验只累计 `total_xp`）。返回升级次数与新阶段（阶段 = `min_level ≤ level` 的最大 `stage_no`），客户端据此播放升级台词与换形象。
 - **设计数据** `pet_species.design`（JSON）：`{baseAssetId, stages: [{stageNo, imageAssetId, actions: {idle, happy, cheer, …: animationAssetId}}], lines: {greeting, encourage, levelUp: audioAssetId}}`。动画素材是 JSON 清单：`{keyframes: [assetId…], template: "bounce", durationMs, loop}`，由前端动效播放器渲染。
 - **提示词**：`description` + 风格模板片段 + 自动追加的禁止项；先用 `seeds/safety/prompt-blocklist` 检查描述与名称。
 

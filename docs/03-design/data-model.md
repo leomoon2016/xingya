@@ -53,7 +53,7 @@
 | | child_items | 已拥有装扮 | `UNIQUE(child_id,item_id)`、生成列 equipped_slot + `UNIQUE(child_id,equipped_slot)` |
 | | reward_options | 家长定义的现实奖励 | star_price 1–2000、active、version |
 | | redemptions | 兑换申请 | 标题/价格快照、status 与决定字段一致、复合外键保证奖励属于同一家庭 |
-| companion（5） | pet_tiers | 伙伴档位 | star_price 1–5000、fragment_price 1–20000、adoption_threshold、max_level、xp_base/xp_step、version |
+| companion（5） | pet_tiers | 伙伴档位 | star_price 1–5000、fragment_price 1–20000、adoption_threshold、max_level（默认 100，2–100）、xp_base/xp_step/xp_quad_div（默认 2/1/200 = 旧系统曲线；xp_quad_div 1–10000）、version |
 | | pet_tier_stages | 成长阶段 | PK(tier_id, stage_no 1–4)、name、min_level（第 1 阶段必须为 1）、unlocked_actions JSON 数组 |
 | | pet_species | 伙伴种类 | species_key、name 唯一、tier_id、status draft/in_review/published/unlisted（上架必须有审核人与时间）、design JSON、voice_id、voice_pitch 0.5–2.0 |
 | | pet_dens | 营地 | PK child_id、extra_slots ≤ 10、version |
@@ -137,4 +137,5 @@
 - 单元层重新验证（ADR 0016）：**236 项全部通过**；表 67、外键 149、CHECK 180、非主键唯一键 71、生成列 12；两次构建指纹一致 `7314879eb6ac`。新增检查：同一版本内 `unit_key` 与单元顺序唯一、`unit_key` 格式、单元必须属于已发布版本、不同单元可有相同 `level_key` 而单元内 `level_key` 与关卡顺序唯一、关卡的单元必须属于同一版本（复合外键）、已发布单元不可改不可删；关卡进度按 `(课程, unit_key, level_key)`；单元进度唯一（首次全 3 星级只触发一次）、计数关系与“先完成后全 3 星级”CHECK、家庭复合外键；投放规则可指向课程/单元/关卡（JSON Schema CHECK：关卡必须带单元、无未知字段、课程 ID 格式），“单元首次全 3 星级”不能指向关卡、“指定关卡通关”的目标必须都是关卡；`content.unit_levels` 范围 CHECK。
 - 积分重新验证（ADR 0017，2026-10-22）：**255 项全部通过**；表 67、外键 149、CHECK 181、非主键唯一键 71、生成列 12；两次构建指纹一致 `b56b4ef9e369`。新增检查：积分四种来源与兑换的数量（0.1 / 1 / 伙伴附赠 ≤ 3 × 1.00 / 10 积分的整数倍、≤ 1000 星）、同一作答同一发音目标与同一复习条目同一天只入账一次、积分不能由家长奖励或直接购买、积分余额不可为负、积分流水不可改、积分换来的星星不计学习星、星星不再有 `review_day`、作答的伙伴等级快照 1–100。
 - Skill 与 AI 角色：默认 1 个系统技能、7 个角色与 7 个 v1 草稿由迁移写入；系统技能不能停用；技能/角色标识正则；输出模式必须是 object、工具 ≤ 20；导入/编辑来源与创建人一致；发布必须有审核人，面向孩子的技能与角色发布必须有儿童安全审核人；版本内容列不可改、受众不可改（列级授权）；当前版本必须属于本技能/角色；不在白名单的角色、受众不同的角色不能挂载；固定版本必须属于该技能；同一角色版本优先级唯一；角色预算 `reserved + spent ≤ cap` 且月份必须有全站预算行；运行只能是管理端角色（儿童角色版本插入 `agent_runs` 被拒）、步数 ≤ 20、实际 ≤ 预估、流水线 2–6 步且步骤序号唯一；步骤序号 1–20、工具步必须有工具名；快捷任务只能指向管理端角色；聊天用量只能关联儿童角色版本；`agents.limits` 越界（如 max_steps 21）与 `agents.stats_min_group` 越界被 CHECK 拒绝。
+- 伙伴最高等级改为 100 后重新验证（2026-10-22）：**258 项全部通过**；表 67、外键 149、CHECK 181、非主键唯一键 71、生成列 12；两次构建指纹一致 `4dba83062c23`。新增检查：默认档位最高 100 级、曲线 2/1/200、阶段 1/20/50/100；最高等级 ≤ 100；二次项除数 1–10000。
 - 伙伴：默认 4 个档位与 16 个阶段由迁移写入、档位价格范围、第 1 阶段从 1 级开始、上架必须经过审核、每人只有一只跟随伙伴、同种伙伴每人一只、伙伴不能物理删除、营地扩建最多 10 格。

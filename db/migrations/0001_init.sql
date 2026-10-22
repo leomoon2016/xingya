@@ -1088,9 +1088,10 @@ CREATE TABLE pet_tiers (                                     -- 档位：价格�
   star_price          INT UNSIGNED NOT NULL,
   fragment_price      INT UNSIGNED NOT NULL,
   adoption_threshold  INT UNSIGNED NOT NULL DEFAULT 0,       -- 历史累计“学习星”门槛
-  max_level           TINYINT UNSIGNED NOT NULL DEFAULT 30,
-  xp_base             SMALLINT UNSIGNED NOT NULL DEFAULT 5,  -- L→L+1 所需经验 = xp_base + xp_step × (L − 1)
-  xp_step             SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  max_level           TINYINT UNSIGNED NOT NULL DEFAULT 100, -- 与旧系统一致（用户 2026-10-22 决定）
+  xp_base             SMALLINT UNSIGNED NOT NULL DEFAULT 2,  -- L→L+1 所需经验 = xp_base + xp_step × floor((L − 1) / 10) + floor((L − 1)² / xp_quad_div)
+  xp_step             SMALLINT UNSIGNED NOT NULL DEFAULT 1,  -- 默认 2 / 1 / 200 = 旧系统 petUpgradeCost 曲线（1→100 级共 2191 经验）
+  xp_quad_div         SMALLINT UNSIGNED NOT NULL DEFAULT 200,
   version             INT UNSIGNED NOT NULL DEFAULT 1,
   updated_by_admin_id BIGINT UNSIGNED NULL,
   updated_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -1099,7 +1100,7 @@ CREATE TABLE pet_tiers (                                     -- 档位：价格�
   CONSTRAINT fk_pet_tiers_admin FOREIGN KEY (updated_by_admin_id) REFERENCES admin_accounts (id),
   CONSTRAINT ck_pet_tiers_prices CHECK (star_price BETWEEN 1 AND 5000 AND fragment_price BETWEEN 1 AND 20000),
   CONSTRAINT ck_pet_tiers_threshold CHECK (adoption_threshold <= 100000),
-  CONSTRAINT ck_pet_tiers_curve CHECK (max_level BETWEEN 2 AND 100 AND xp_base BETWEEN 1 AND 1000 AND xp_step <= 1000)
+  CONSTRAINT ck_pet_tiers_curve CHECK (max_level BETWEEN 2 AND 100 AND xp_base BETWEEN 1 AND 1000 AND xp_step <= 1000 AND xp_quad_div BETWEEN 1 AND 10000)
 ) ENGINE=InnoDB;
 
 CREATE TABLE pet_tier_stages (                               -- 成长阶段（幼苗/探险/守护/星耀…）：换形象、解锁动作
@@ -1692,9 +1693,9 @@ SELECT t.id, s.stage_no, s.name, s.min_level, CAST(s.actions AS JSON)
 FROM pet_tiers t
 CROSS JOIN (
   SELECT 1 AS stage_no, '幼苗' AS name,  1 AS min_level, '["idle-breathe","happy-bounce"]' AS actions
-  UNION ALL SELECT 2, '探险',  5, '["cheer-jump"]'
-  UNION ALL SELECT 3, '守护', 12, '["happy-wave"]'
-  UNION ALL SELECT 4, '星耀', 20, '["cheer-spin"]'
+  UNION ALL SELECT 2, '探险',  20, '["cheer-jump"]'     -- 阶段起始等级 1 / 20 / 50 / 100 与旧系统 petStage 一致
+  UNION ALL SELECT 3, '守护',  50, '["happy-wave"]'
+  UNION ALL SELECT 4, '星耀', 100, '["cheer-spin"]'
 ) s;
 -- 系统技能：儿童安全（不能停用；内容由 xingya seeds:apply 从仓库 seeds/skills/child-safety/ 导入）
 INSERT INTO skills (id, skill_key, audience, is_system) VALUES (1, 'child-safety', 'child', 1);

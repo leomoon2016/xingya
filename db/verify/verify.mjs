@@ -255,6 +255,10 @@ await expectErr('CHECK：批准必须记录家长与时间', app, `UPDATE redemp
 await expectErr('CHECK：档位星价 1–5000', app, `INSERT INTO pet_tiers (name,sort_order,star_price,fragment_price) VALUES ('免费',0,0,10)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 { const [[t]] = await app.query(`SELECT (SELECT COUNT(*) FROM pet_tiers) tiers, (SELECT COUNT(*) FROM pet_tier_stages) stages, (SELECT star_price FROM pet_tiers WHERE id=1) p1`);
   ok('默认档位 4 个、成长阶段 16 个由迁移写入（初级 20 星）', Number(t.tiers) === 4 && Number(t.stages) === 16 && Number(t.p1) === 20, JSON.stringify(t)); }
+{ const [[c]] = await app.query(`SELECT MIN(max_level) mn, MAX(max_level) mx, MIN(xp_base) b, MIN(xp_step) st, MIN(xp_quad_div) q, (SELECT GROUP_CONCAT(min_level ORDER BY stage_no) FROM pet_tier_stages WHERE tier_id=1) lv FROM pet_tiers`);
+  ok('默认档位最高 100 级、曲线 2/1/200（旧系统）、阶段 1/20/50/100', Number(c.mn) === 100 && Number(c.mx) === 100 && Number(c.b) === 2 && Number(c.st) === 1 && Number(c.q) === 200 && c.lv === '1,20,50,100', JSON.stringify(c)); }
+await expectErr('CHECK：档位最高等级 ≤ 100', app, `UPDATE pet_tiers SET max_level=101 WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：曲线二次项除数 1–10000', app, `UPDATE pet_tiers SET xp_quad_div=0 WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：第 1 阶段从 1 级开始', app, `UPDATE pet_tier_stages SET min_level=3 WHERE tier_id=1 AND stage_no=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：上架的伙伴必须经过审核', app, `INSERT INTO pet_species (species_key,name,description,tier_id,status,design,created_by_admin_id,published_at) VALUES ('leafy','叶叶','x',1,'published','{}',1,NOW(3))`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await app.query(`INSERT INTO pet_species (id,species_key,name,description,tier_id,status,design,created_by_admin_id,reviewed_by_admin_id,published_at) VALUES (1,'leafy','叶叶','原创小叶精灵',1,'published','{}',1,1,NOW(3)),(2,'pebble','石石','原创小石头',1,'published','{}',1,1,NOW(3))`);

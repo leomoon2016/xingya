@@ -1,4 +1,4 @@
-PASS  从空库应用两次结构指纹一致  — b56b4ef9e369 / b56b4ef9e369
+PASS  从空库应用两次结构指纹一致  — 4dba83062c23 / 4dba83062c23
 PASS  表数=67  — {"tables":67,"fks":149,"checks":181,"uniques":71,"generated":12}
 PASS  授权全覆盖：每张表都有应用角色授权  — []
 PASS  xingya 账号只有 @localhost（角色除外）  — [{"user":"xingya_app_role","host":"%"},{"user":"xingya_migrator_role","host":"%"},{"user":"xingya_app","host":"localhost"},{"user":"xingya_migrator","host":"localhost"}]
@@ -131,6 +131,9 @@ PASS  复合外键：只能兑换本家庭的奖励  — ER_NO_REFERENCED_ROW_2:
 PASS  CHECK：批准必须记录家长与时间  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_redemptions_decision' is violated.
 PASS  CHECK：档位星价 1–5000  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_tiers_prices' is violated.
 PASS  默认档位 4 个、成长阶段 16 个由迁移写入（初级 20 星）  — {"tiers":4,"stages":16,"p1":20}
+PASS  默认档位最高 100 级、曲线 2/1/200（旧系统）、阶段 1/20/50/100  — {"mn":100,"mx":100,"b":2,"st":1,"q":200,"lv":"1,20,50,100"}
+PASS  CHECK：档位最高等级 ≤ 100  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_tiers_curve' is violated.
+PASS  CHECK：曲线二次项除数 1–10000  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_tiers_curve' is violated.
 PASS  CHECK：第 1 阶段从 1 级开始  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_tier_stages_first' is violated.
 PASS  CHECK：上架的伙伴必须经过审核  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_species_published' is violated.
 PASS  用碎片领养伙伴（第一只自动成为跟随伙伴）
@@ -255,4 +258,4 @@ PASS  CHECK：运营分析最小分组 3–50  — ER_CHECK_CONSTRAINT_VIOLATED:
 PASS  角色本身为锁定账号（不可登录）
 
 结构统计: {"tables":67,"fks":149,"checks":181,"uniques":71,"generated":12}
-合计 255 项，通过 255，失败 0
+合计 258 项，通过 258，失败 0
