@@ -145,7 +145,7 @@ PASS  CHECK：学习卡碎片不发星星  — ER_CHECK_CONSTRAINT_VIOLATED: Che
 PASS  同一 source_key 在不同币种下各记一次
 PASS  CHECK：复习不发星星（review_day 只用于碎片，ADR 0017）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  幂等：碎片同一 source_key 只入账一次  — ER_DUP_ENTRY: Duplicate entry '1-fragment-review:2026-10-21' for key 'ledger.uq_ledger_source'
-PASS  CHECK：碎片不能用于购买装扮（币种与类型匹配）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
+PASS  CHECK：碎片不能用于购买徽章（币种与类型匹配）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  CHECK：碎片不能由家长奖励（无被动或人工来源）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  CHECK：每个呀哈哈家族成员只给 1 片碎片  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
 PASS  CHECK：复习完成碎片固定 2 片  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
@@ -170,7 +170,7 @@ PASS  幂等：同一复习条目同一天只得一次积分  — ER_DUP_ENTRY: 
 PASS  CHECK：听发音每次固定 0.1 积分  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
 PASS  CHECK：伙伴附赠每星至少 0.10（1 星 × 0.10 = 10 单位）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
 PASS  CHECK：积分不能由家长奖励  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
-PASS  CHECK：积分不能直接购买装扮  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
+PASS  CHECK：积分不能直接购买徽章  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  CHECK：星星不能记为听发音来源  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  复习答对 9 题（不同条目）累计到 10.50 积分
 PASS  积分换星：−10 积分 与 +1 星 同一 source_key

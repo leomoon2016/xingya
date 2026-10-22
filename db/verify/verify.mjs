@@ -269,7 +269,7 @@ await expectErr('CHECK：学习卡碎片不发星星', app, led('star', 'learnin
 await expectOk('同一 source_key 在不同币种下各记一次', app, led('star', 'streak', 3, 44, 'review:2026-10-21'));
 await expectErr('CHECK：复习不发星星（review_day 只用于碎片，ADR 0017）', app, led('star', 'review_day', 2, 46, 'review:2026-10-19'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('幂等：碎片同一 source_key 只入账一次', app, led('fragment', 'review_day', 2, 7, 'review:2026-10-21'), [], ['ER_DUP_ENTRY']);
-await expectErr('CHECK：碎片不能用于购买装扮（币种与类型匹配）', app, led('fragment', 'purchase', -1, 4, 'purchase:hat-x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：碎片不能用于购买徽章（币种与类型匹配）', app, led('fragment', 'purchase', -1, 4, 'purchase:hat-x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：碎片不能由家长奖励（无被动或人工来源）', app, led('fragment', 'parent_award', 5, 10, 'award:f', '1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：每个呀哈哈家族成员只给 1 片碎片', app, led('fragment', 'discovery', 2, 7, 'discovery:spot:9'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：复习完成碎片固定 2 片', app, led('fragment', 'review_day', 3, 8, 'review:2026-10-20'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
@@ -301,7 +301,7 @@ await expectErr('幂等：同一复习条目同一天只得一次积分', app, l
 await expectErr('CHECK：听发音每次固定 0.1 积分', app, led('point', 'level_listen', 20, 170, 'listen:7:q2:prompt'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：伙伴附赠每星至少 0.10（1 星 × 0.10 = 10 单位）', app, led('point', 'pet_bonus', 5, 155, 'petbonus:attempt:2'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：积分不能由家长奖励', app, led('point', 'parent_award', 100, 250, 'award:p', '1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectErr('CHECK：积分不能直接购买装扮', app, led('point', 'purchase', -100, 50, 'purchase:hat-p'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：积分不能直接购买徽章', app, led('point', 'purchase', -100, 50, 'purchase:hat-p'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：星星不能记为听发音来源', app, led('star', 'level_listen', 10, 54, 'listen:7:q3:prompt'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('复习答对 9 题（不同条目）累计到 10.50 积分', app, [6,7,8,9,10,11,12,13,14].map((i, k) => led('point', 'review_correct', 100, 250 + k * 100, `review_correct:2026-10-21:${i}`)).join('; '));
 await expectOk('积分换星：−10 积分 与 +1 星 同一 source_key', app, `${led('point', 'point_convert', -1000, 50, 'convert:r1')}; INSERT INTO ledger (family_id,child_id,currency,kind,delta,balance_after,source_key,local_date) VALUES (1,1,'star','point_convert',1,45,'convert:r1','2026-10-21')`);

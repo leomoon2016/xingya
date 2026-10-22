@@ -825,7 +825,7 @@ CREATE TABLE questions (                                     -- 只追加：孩�
   level_id     BIGINT UNSIGNED NOT NULL,
   question_key VARCHAR(32)  NOT NULL,                        -- 关卡内稳定键
   seq          TINYINT UNSIGNED NOT NULL,
-  type         VARCHAR(24)  NOT NULL,                        -- 9 种题型，见 learning 需求 §4.1.3
+  type         VARCHAR(24)  NOT NULL,                        -- 10 种题型（含 listen_pick_image），见 learning 需求 §4.1.3
   scored       TINYINT(1)   NOT NULL,
   sense_id     VARCHAR(96)  NULL,                            -- 考查的义项（句型/阅读题可为空）
   visible      JSON         NOT NULL,                        -- 题干、选项（带选项 ID）、资源 ID；不得含答案字段
