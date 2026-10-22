@@ -5,7 +5,7 @@
 
 ## 6. 数据模型
 
-完整 DDL 见 `db/migrations/0001_init.sql`（表）与 `db/roles.sql`（角色与授权）。共 67 张表（业务 64 + 平台 3）；149 个外键、180 个 CHECK、71 个非主键唯一键、12 个生成列。全部 InnoDB / utf8mb4；时间 UTC；外键一律 RESTRICT；孩子与家长只停用/归档不硬删。
+完整 DDL 见 `db/migrations/0001_init.sql`（表）与 `db/roles.sql`（角色与授权）。共 67 张表（业务 64 + 平台 3）；149 个外键、181 个 CHECK、71 个非主键唯一键、12 个生成列。全部 InnoDB / utf8mb4；时间 UTC；外键一律 RESTRICT；孩子与家长只停用/归档不硬删。
 
 ### 6.1 表清单（67 张）
 | 模块 | 表 | 用途 | 关键列 / 约束 |
@@ -41,14 +41,14 @@
 | | levels | 关卡（只追加） | course_version_id + unit_id（复合外键：单元属于同一版本）、level_key（单元内唯一、跨版本稳定：`UNIQUE(unit_id, level_key)`）、seq（单元内，`UNIQUE(unit_id, seq)`）、scene_asset_id、pages（绘本）、hiding_spots（恰好 3 个藏匿点定义） |
 | | questions | 题目可见部分（只追加） | level_id、question_key、seq 1–8、type、scored（`read_aloud`=0）、sense_id、visible JSON（CHECK 拒绝答案字段） |
 | | question_answers | 题目答案部分（只追加） | PK question_id、answer JSON、explanation |
-| learning（6） | plays | 作答 | kind level/review、course_version_id + level_id（复合外键：关卡属于该版本）、`UNIQUE(child_id, client_request_id)`、items（下发题目与选项顺序）、responses（每题第一次作答）、status、expires_at |
+| learning（6） | plays | 作答 | kind level/review、course_version_id + level_id（复合外键：关卡属于该版本）、`UNIQUE(child_id, client_request_id)`、items（下发题目与选项顺序）、responses（每题第一次作答）、status、expires_at、companion_level（开始时跟随伙伴等级快照，1–100，伙伴附赠积分用） |
 | | level_progress | 关卡最佳星级 | PK(child_id, course_id, unit_key, level_key)、best_stars 0–3、first_passed_at 与星级一致 |
 | | unit_progress | 单元进度 | PK(child_id, course_id, unit_key)、level_count ≥ 1、levels_three_star ≤ levels_passed ≤ level_count、first_completed_at（下一单元解锁，之后不收回）、first_all_three_star_at（必须晚于完成；触发“单元首次全 3 星级通关”一次） |
 | | attempts | 闯关记录（只追加） | `UNIQUE(play_id)`、course_version_id + level_id、scored_count 4–8、生成列 accuracy_pct/stars/passed、stars_awarded、answers JSON、activity_date |
 | | review_items | 间隔复习条目 | item_type sense/question 与 sense_id/question_id 互斥、生成列 ref_id、`UNIQUE(child_id,item_type,ref_id)`、box 1–6、due_date |
 | | review_sessions | 复习结算（只追加） | `UNIQUE(play_id)`、item_count ≤ 20、生成列 completion_date + 唯一键（每天最多完成一次） |
-| stars（6） | ledger | 账本（只追加，星星 + 碎片） | currency、kind（按币种限定，CHECK）、delta（按 kind 约束正负与范围）、balance_after ≥ 0、`UNIQUE(child_id, currency, source_key)`、生成列 counts_for_leaderboard（= 学习星） |
-| | balances | 余额缓存 + 行锁 | PK(child_id, currency)、balance ≥ 0、last_ledger_id |
+| stars（6） | ledger | 账本（只追加，星星 + 碎片 + 积分） | currency star/fragment/point（积分以 0.01 为单位存整数）、kind（按币种限定，CHECK；积分只有 level_listen/word_listen/review_correct/pet_bonus/point_convert，星星不再有 review_day）、delta（按 kind 约束正负与范围：听发音 10、复习答对 100、伙伴附赠 10–300、换星积分 −1000 的整数倍且 ≤ 1000 星）、balance_after ≥ 0、`UNIQUE(child_id, currency, source_key)`（同时保证每次作答每个发音目标、每个单词本发音每天、每个复习条目每天只得一次积分）、生成列 counts_for_leaderboard（= 学习星：level_pass、streak） |
+| | balances | 余额缓存 + 行锁 | PK(child_id, currency)（star → fragment → point 即锁顺序）、balance ≥ 0、last_ledger_id |
 | | shop_items | 装扮 | slot head/body/accessory、price 1–1000、image_asset_id、status draft/listed/unlisted、version |
 | | child_items | 已拥有装扮 | `UNIQUE(child_id,item_id)`、生成列 equipped_slot + `UNIQUE(child_id,equipped_slot)` |
 | | reward_options | 家长定义的现实奖励 | star_price 1–2000、active、version |
@@ -72,7 +72,7 @@
 | controls（3） | child_controls | 每孩子管控设置 | daily_minutes 10–300、allowed_start<allowed_end、ai_daily_limit 0–100、leaderboard_opt_out、version |
 | | course_overrides | 课程开放覆盖 | PK(child_id, course_id)、mode open/closed |
 | | usage_days | 每孩子每日用时 | used_seconds、bonus_minutes（15 的倍数 ≤120）、window_extended_until、last_heartbeat_at |
-| reports（2） | daily_reports | 每日汇总 | PK(child_id, report_date)、各项计数（含 units_completed、fragments_in、yahaha_found）、top_missed JSON |
+| reports（2） | daily_reports | 每日汇总 | PK(child_id, report_date)、各项计数（含 units_completed、fragments_in、points_in、points_converted、yahaha_found）、top_missed JSON |
 | | email_outbox | 邮件发件箱 | `UNIQUE(dedupe_key)`、status、attempts ≤ 10、发送后清空正文 |
 | platform（3） | system_settings | 系统设置 | 键白名单 CHECK；`discovery.spot_probability_pct` 1–100、`discovery.daily_cap` 1–10、`companion.den_base_slots` 1–10、`learning.play_ttl_minutes` 30–720、`content.unit_levels`（1 ≤ min ≤ max ≤ 12）、`agents.limits`（max_steps 1–20、child_max_steps 1–5、max_pipeline_steps 2–6、run_timeout_s 30–1800、child_run_timeout_s 5–30）、`agents.stats_min_group` 3–50 的取值 CHECK；version |
 | | idempotency_requests | 请求幂等 | `UNIQUE(actor_type, actor_id, client_request_id)`、request_hash、只存 2xx |
@@ -135,5 +135,6 @@
 - 工作室：第 3 个并发任务被拒（槽位唯一）、槽位只能 1/2、运行中必须占槽位、本机进程任务同时最多 1 个；实际费用不得超过预估；预留 + 已花费不得超过月度上限；图片 ≤ 300 KB、AI 图片必须记录提示词；素材 OSS 路径不能改。
 - 第 10 部分重新验证：**207 项全部通过**（新增“每张表都有应用授权”全覆盖检查与约 50 项 Skill 与 AI 角色检查）；表 65、外键 145、CHECK 172、非主键唯一键 68、生成列 12；两次构建指纹一致 `b8a54a47ac17`。
 - 单元层重新验证（ADR 0016）：**236 项全部通过**；表 67、外键 149、CHECK 180、非主键唯一键 71、生成列 12；两次构建指纹一致 `7314879eb6ac`。新增检查：同一版本内 `unit_key` 与单元顺序唯一、`unit_key` 格式、单元必须属于已发布版本、不同单元可有相同 `level_key` 而单元内 `level_key` 与关卡顺序唯一、关卡的单元必须属于同一版本（复合外键）、已发布单元不可改不可删；关卡进度按 `(课程, unit_key, level_key)`；单元进度唯一（首次全 3 星级只触发一次）、计数关系与“先完成后全 3 星级”CHECK、家庭复合外键；投放规则可指向课程/单元/关卡（JSON Schema CHECK：关卡必须带单元、无未知字段、课程 ID 格式），“单元首次全 3 星级”不能指向关卡、“指定关卡通关”的目标必须都是关卡；`content.unit_levels` 范围 CHECK。
+- 积分重新验证（ADR 0017，2026-10-22）：**255 项全部通过**；表 67、外键 149、CHECK 181、非主键唯一键 71、生成列 12；两次构建指纹一致 `b56b4ef9e369`。新增检查：积分四种来源与兑换的数量（0.1 / 1 / 伙伴附赠 ≤ 3 × 1.00 / 10 积分的整数倍、≤ 1000 星）、同一作答同一发音目标与同一复习条目同一天只入账一次、积分不能由家长奖励或直接购买、积分余额不可为负、积分流水不可改、积分换来的星星不计学习星、星星不再有 `review_day`、作答的伙伴等级快照 1–100。
 - Skill 与 AI 角色：默认 1 个系统技能、7 个角色与 7 个 v1 草稿由迁移写入；系统技能不能停用；技能/角色标识正则；输出模式必须是 object、工具 ≤ 20；导入/编辑来源与创建人一致；发布必须有审核人，面向孩子的技能与角色发布必须有儿童安全审核人；版本内容列不可改、受众不可改（列级授权）；当前版本必须属于本技能/角色；不在白名单的角色、受众不同的角色不能挂载；固定版本必须属于该技能；同一角色版本优先级唯一；角色预算 `reserved + spent ≤ cap` 且月份必须有全站预算行；运行只能是管理端角色（儿童角色版本插入 `agent_runs` 被拒）、步数 ≤ 20、实际 ≤ 预估、流水线 2–6 步且步骤序号唯一；步骤序号 1–20、工具步必须有工具名；快捷任务只能指向管理端角色；聊天用量只能关联儿童角色版本；`agents.limits` 越界（如 max_steps 21）与 `agents.stats_min_group` 越界被 CHECK 拒绝。
 - 伙伴：默认 4 个档位与 16 个阶段由迁移写入、档位价格范围、第 1 阶段从 1 级开始、上架必须经过审核、每人只有一只跟随伙伴、同种伙伴每人一只、伙伴不能物理删除、营地扩建最多 10 格。

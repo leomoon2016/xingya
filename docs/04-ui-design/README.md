@@ -7,7 +7,7 @@
 | `wireframes/<使用者>/<功能>/` | 线框图：`child/`（login、learn、review、companion、discovery、album、shop、social、chat）、`parent/`（dashboard、reports、controls、approvals）、`admin/`（studio、skills、agents、runs、courses、pets、yahaha、rules、families、settings、audit），与 `apps/web/src/features/{child,parent}` 和 `apps/admin/src/features` 一一对应 |
 | `mockups/<使用者>/<功能>/` | 高保真效果图，分组同上 |
 | `components/` | 组件规范（与 `packages/ui`、`apps/web/src/components`、`apps/admin/src/components` 对应） |
-| `characters/` | 原创角色设定：呀哈哈队长（固定形象）、呀哈哈家族风格基准、伙伴风格模板、头像与装扮（禁止第三方 IP） |
+| `characters/` | 原创角色设定：呀哈哈队长（固定形象）、呀哈哈家族风格基准、伙伴风格模板、头像与装扮（禁止第三方 IP；唯一例外是游戏搭档马里奥 / 林克，只用 `seeds/partners/` 固定素材，ADR 0018） |
 
 无障碍基线（对比度 ≥ 4.5:1、触控目标 ≥ 44×44 px、200% 字号不破版等）见 `docs/01-requirements/nfr.md` §8.3。
 

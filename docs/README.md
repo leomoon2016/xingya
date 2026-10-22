@@ -42,13 +42,13 @@
 - [06-releases/v1.0/changes.md](06-releases/v1.0/changes.md)：v1.0 范围变更记录
 - [06-releases/v1.0/acceptance.md](06-releases/v1.0/acceptance.md)：v1.0 验收清单
 - [06-releases/v1.0/release-notes.md](06-releases/v1.0/release-notes.md)：v1.0 发布说明
-- [adr/README.md](adr/README.md)：架构决策记录索引（ADR 0001–0016）
+- [adr/README.md](adr/README.md)：架构决策记录索引（ADR 0001–0018）
 - [reviews/README.md](reviews/README.md)：文档评审记录索引
 - [reviews/2026-10-21-整体评审.md](reviews/2026-10-21-整体评审.md)：2026-10-21 文档整体评审报告（一致性、过期引用、验收标准、安全与儿童安全、链接；含第十节补充评审与目录调整评审）
 
 ## 原规格章节 → 文件
 
-2026-10-21 设计变更新增的章节（§4.1.1a–c、§4.6–§4.10、§7.6）编号接续原规格；变更的决策见 [adr/](adr/README.md) 0008–0014；目录调整（后台独立应用、`seeds/`）见 ADR 0015；单元层见 ADR 0016；评审见 [reviews/](reviews/2026-10-21-整体评审.md)。
+2026-10-21 设计变更新增的章节（§4.1.1a–c、§4.6–§4.10、§7.6）编号接续原规格；变更的决策见 [adr/](adr/README.md) 0008–0014；目录调整（后台独立应用、`seeds/`）见 ADR 0015；单元层见 ADR 0016；积分见 ADR 0017；游戏搭档（马里奥）见 ADR 0018；评审见 [reviews/](reviews/2026-10-21-整体评审.md)。
 
 拆分后的文档沿用原《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed，已从仓库移除，可在 Git 历史中查看）的章节编号。
 

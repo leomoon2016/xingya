@@ -5,7 +5,7 @@
 
 ## 职责
 
-只追加账本（星星与碎片）与余额缓存、发放与扣除、商店装扮购买与穿戴、家长定义的现实奖励与兑换审批、夜间对账。
+只追加账本（星星、碎片与积分，ADR 0017）与余额缓存、发放与扣除、积分换星、商店装扮购买与穿戴、家长定义的现实奖励与兑换审批、夜间对账。
 
 ## 拥有的表
 
@@ -24,12 +24,15 @@ ledger, balances, shop_items, child_items, reward_options, redemptions
 以 TypeScript 签名表示（省略 `Promise<>`；`P` = 已鉴权主体 Principal；`Tx` = Kysely 事务）。
 
 ```ts
-type Currency = 'star' | 'fragment'
-getBalances(childId): {stars: {available, held}, fragments}
+type Currency = 'star' | 'fragment' | 'point'          // point 以 0.01 积分为单位
+getBalances(childId): {stars: {available, held}, fragments, points}
+getPointsSummary(childId, localDate): {points, reviewToday, wordListenToday, nextWordListenAt?}   // 今日复习积分 /30、单词本听读 /10
+convertPoints(child, {stars}): {pointsSpent, starsGained, balances}   // 10 积分 = 1 星，1–1000；不足 → INSUFFICIENT_POINTS
+petRateUnits(level): number                            // 旧系统节点 (1,10)(20,20)(40,35)(60,55)(80,75)(100,100) 分段线性
 listLedger(familyId, childId, {currency?, cursor})
 creditInTx(tx, {familyId, childId, currency, kind, delta, sourceKey, localDate, actorParentId?, note?}): LedgerEntry | 'duplicate'
 debitInTx(tx, …同上): LedgerEntry                    // 余额不足 → INSUFFICIENT_STARS / INSUFFICIENT_FRAGMENTS
-lockBalancesInTx(tx, childId, currencies[]): void     // 按 star → fragment 顺序加行锁（不存在则插入 0 余额行）
+lockBalancesInTx(tx, childId, currencies[]): void     // 按 star → fragment → point 顺序加行锁（不存在则插入 0 余额行）
 learningStarsTotal(childId): number                  // SUM(delta) WHERE counts_for_leaderboard = 1（companion 门槛）
 parentAward(p, childId, {amount, note})
 listShopItems() / purchase(child, {itemId, expectedPrice}) / setEquipment(child, {slot, itemId | null}) / listOwned(childId)
@@ -38,11 +41,13 @@ listRewardOptions(familyId) / createRewardOption(p, …) / updateRewardOption(p,
 requestRedemption(child, {rewardOptionId, expectedPrice}) / cancelRedemption(child, id)
 decideRedemption(p, id, {decision: 'approve' | 'reject', note?, version})
 listPendingRedemptions(familyId)
-verifyBalances(): Mismatch[]                         // 夜间对账（两个币种）
+verifyBalances(): Mismatch[]                         // 夜间对账（三个币种）
 ```
 
-- `creditInTx`/`debitInTx` 在 `balances(child_id, currency)` 行锁内计算 `balance_after`；同一事务涉及两个币种时先锁 `star` 再锁 `fragment`。`source_key` 冲突返回 `'duplicate'`（调用方据此跳过，例如“同一关当天已发过碎片”）。
-- 碎片的 kind 只允许 `level_pass`、`review_day`、`discovery`（入）与 `pet_adopt`（出），由数据库 CHECK 保证；接口层也拒绝其他组合。
+- `creditInTx`/`debitInTx` 在 `balances(child_id, currency)` 行锁内计算 `balance_after`；同一事务涉及多个币种时按 `star` → `fragment` → `point` 加锁。
+- 积分的每日上限（复习 30、单词本 10）与单词本 5 秒冷却在 `balances(child, point)` 行锁内按当天流水计数判断（与旧系统同为服务端判断，不另建表）；每个目标只发一次由 `source_key` 唯一键保证。
+- 换星：一个事务内先锁 `star` 再锁 `point`，写 `point point_convert −stars×1000` 与 `star point_convert +stars`，两行 `source_key` 都是 `convert:{请求 ID}`；外层幂等表保证重放返回第一次结果。`source_key` 冲突返回 `'duplicate'`（调用方据此跳过，例如“同一关当天已发过碎片”）。
+- 碎片的 kind 只允许 `level_pass`、`review_day`、`discovery`（入）与 `pet_adopt`（出）；积分只允许 `level_listen`、`word_listen`、`review_correct`、`pet_bonus`（入）与 `point_convert`（出）；星星不再有 `review_day`。均由数据库 CHECK 保证；接口层也拒绝其他组合。
 
 ## 时序：兑换（冻结 → 批准/拒绝）
 

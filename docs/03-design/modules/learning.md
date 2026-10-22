@@ -63,7 +63,8 @@ sequenceDiagram
   L->>CT: isCourseOpen；L 检查解锁（所在单元已解锁且单元内前一关已通过）
   L->>CO: getLevel(当前版本) → 可见部分
   L->>L: crypto 打乱每题选项顺序，并把选项/词块 ID 换成本次作答的随机令牌（映射存 items）
-  L->>DB: INSERT plays(version, level, items, expires_at)（R 唯一，重放返回同一作答）
+  L->>CP: getCompanion(child) → 跟随伙伴等级（没有则 NULL）
+  L->>DB: INSERT plays(version, level, items, expires_at, companion_level)（R 唯一，重放返回同一作答）
   API-->>C: {playId, questions(可见部分), expiresAt}
   loop 每一题
     C->>API: POST /plays/:id/answers {questionId, response}
@@ -81,7 +82,7 @@ sequenceDiagram
   API->>CT: checkAccess(child, 'submit')
   API->>DB: BEGIN；INSERT idempotency(R2)
   API->>L: finishInTx
-  L->>S: lockBalancesInTx(child: star → fragment)（锁顺序 ②，见 nfr §4.5.2）
+  L->>S: lockBalancesInTx(child: star → fragment → point)（锁顺序 ②，见 nfr §4.5.2）
   L->>DB: plays FOR UPDATE（全部已答、未过期）；SELECT level_progress、unit_progress … FOR UPDATE
   L->>DB: INSERT attempts（生成列复核星级；play_id 唯一）
   L->>DB: UPSERT level_progress(course, unit_key, level_key)；复习入队（义项 / 无义项的错题）
@@ -89,6 +90,9 @@ sequenceDiagram
   opt awarded > 0
     L->>S: creditInTx(star, level_pass, awarded, attempt:{id})
     L->>CP: addXpInTx(child, awarded)
+    opt plays.companion_level 不为空（开始作答时有跟随伙伴）
+      L->>S: creditInTx(point, pet_bonus, awarded × petRateUnits(companion_level), petbonus:attempt:{id})（ADR 0017）
+    end
   end
   opt passed
     L->>S: creditInTx(fragment, level_pass, stars, frag:level:{course}:{unitKey}:{levelKey}:{date})（已存在则跳过）
@@ -96,10 +100,12 @@ sequenceDiagram
   end
   L->>L: 连续天数；里程碑 → S.creditInTx(star, streak) + CP.addXpInTx
   L->>DB: plays → finished；写幂等响应；COMMIT
-  API-->>C: {accuracy, stars, passed, awarded, fragments, xp, spots[3](只有编号与位置), nextLevelUnlocked, unitCompleted, nextUnitUnlocked, streak}
+  API-->>C: {accuracy, stars, passed, awarded, fragments, xp, petPoints, spots[3](只有编号与位置), nextLevelUnlocked, unitCompleted, nextUnitUnlocked, streak}
 ```
 
-复习作答相同：`POST /review/plays` 开始，同样的 `answers` 与 `finish`；完成时写 `review_sessions`（`play_id` 唯一）、更新盒与到期日；“今日完成”时发 `star review_day 2` 与 `fragment review_day 2` 并 `addXpInTx(2)`。
+复习作答相同：`POST /review/plays` 开始，同样的 `answers` 与 `finish`；完成时写 `review_sessions`（`play_id` 唯一）、更新盒与到期日；对每个答对的条目 `creditInTx(point, review_correct, 100, review_correct:{date}:{reviewItemId})`（已存在则跳过；当天该 kind 合计达到 30 积分后不再写，在积分余额行锁内计数）；“今日完成”时只发 `fragment review_day 2`。复习不发星星、不加伙伴经验（ADR 0017）。
+
+听发音：`POST /plays/:id/listen {target}` → BEGIN；`lockBalancesInTx(child, [point])`；`plays FOR UPDATE`；`status = 'finished'` → `409 PLAY_FINISHED`；`target` 必须能在 `plays.items` 中找到且带音频（否则 400）；`creditInTx(point, level_listen, 10, listen:{playId}:{target})`，重复返回 `{awarded:false}`；COMMIT。不经幂等表（`source_key` 已保证只发一次）。
 
 ## 端点
 

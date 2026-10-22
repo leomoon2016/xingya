@@ -1,7 +1,5 @@
-# 验证结果（2026-10-21，临时 MySQL 8.4.6，node db/verify/verify.mjs db/migrations/0001_init.sql db/roles.sql）
-
-PASS  从空库应用两次结构指纹一致  — 7314879eb6ac / 7314879eb6ac
-PASS  表数=67  — {"tables":67,"fks":149,"checks":180,"uniques":71,"generated":12}
+PASS  从空库应用两次结构指纹一致  — b56b4ef9e369 / b56b4ef9e369
+PASS  表数=67  — {"tables":67,"fks":149,"checks":181,"uniques":71,"generated":12}
 PASS  授权全覆盖：每张表都有应用角色授权  — []
 PASS  xingya 账号只有 @localhost（角色除外）  — [{"user":"xingya_app_role","host":"%"},{"user":"xingya_migrator_role","host":"%"},{"user":"xingya_app","host":"localhost"},{"user":"xingya_migrator","host":"localhost"}]
 PASS  migrator 可执行 DDL
@@ -51,7 +49,7 @@ PASS  不可变：app 不能修改已发布单元  — ER_TABLEACCESS_DENIED_ERR
 PASS  不可变：app 不能删除已发布单元  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'units'
 PASS  CHECK：题目可见部分不得含答案字段  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_questions_visible' is violated.
 PASS  CHECK：read_aloud 不能计分  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_questions_scored' is violated.
-PASS  题目表不含答案/解析列（答案在 question_answers）  — id,level_id,question_key,seq,type,scored,sense_id,visible
+PASS  题目表不含答案/解析列（答案在 question_answers）  — id,level_id,question_key,scored,sense_id,seq,type,visible
 PASS  不可变：app 不能修改已发布题目  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'questions'
 PASS  不可变：app 不能修改已发布答案  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'question_answers'
 PASS  不可变：app 不能修改已发布关卡  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'levels'
@@ -93,6 +91,7 @@ PASS  权限：app 不能 UPDATE 账本  — ER_TABLEACCESS_DENIED_ERROR: UPDATE
 PASS  权限：app 不能 DELETE 账本  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'ledger'
 PASS  碎片：通关 +3、复习 +2
 PASS  同一 source_key 在不同币种下各记一次
+PASS  CHECK：复习不发星星（review_day 只用于碎片，ADR 0017）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  幂等：碎片同一 source_key 只入账一次  — ER_DUP_ENTRY: Duplicate entry '1-fragment-review:2026-10-21' for key 'ledger.uq_ledger_source'
 PASS  CHECK：碎片不能用于购买装扮（币种与类型匹配）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  CHECK：碎片不能由家长奖励（无被动或人工来源）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
@@ -102,14 +101,32 @@ PASS  CHECK：碎片余额不可为负  — ER_CHECK_CONSTRAINT_VIOLATED: Check 
 PASS  权限：app 不能 UPDATE 碎片流水  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'ledger'
 PASS  权限：app 不能 DELETE 碎片流水  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'ledger'
 PASS  碎片余额 = SUM(delta) = 5（与星星分开计算）
-PASS  “学习星”只统计星星的 level_pass/review_day/streak  — 3
+PASS  “学习星”只统计星星的 level_pass/streak  — 4
+PASS  积分：关内听发音 +0.1、单词本听发音 +0.1、复习答对 +1、伙伴附赠
+PASS  幂等：同一作答同一发音目标只得一次积分  — ER_DUP_ENTRY: Duplicate entry '1-point-listen:7:q1:prompt' for key 'ledger.uq_ledger_source'
+PASS  幂等：同一复习条目同一天只得一次积分  — ER_DUP_ENTRY: Duplicate entry '1-point-review_correct:2026-10-21:5' for key 'ledger.uq_ledger_source'
+PASS  CHECK：听发音每次固定 0.1 积分  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  CHECK：伙伴附赠最多 3 星 × 1.00  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  CHECK：积分不能由家长奖励  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
+PASS  CHECK：积分不能直接购买装扮  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
+PASS  CHECK：星星不能记为听发音来源  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
+PASS  复习答对 9 题（不同条目）累计到 10.50 积分
+PASS  积分换星：−10 积分 与 +1 星 同一 source_key
+PASS  CHECK：兑换必须是 10 积分的整数倍  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  CHECK：一次最多兑换 1000 星  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  CHECK：积分余额不可为负  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_balance' is violated.
+PASS  权限：app 不能 UPDATE 积分流水  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'ledger'
+PASS  积分余额 = SUM(delta) = 0.50（1050 − 1000 单位）  — 50
+PASS  积分换来的星星是奖励星（不计学习星）  — 4
+PASS  作答记录跟随伙伴等级快照
+PASS  CHECK：伙伴等级快照 1–100  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_plays_companion_level' is violated.
 PASS  权限：app 不能 DROP 表  — ER_TABLEACCESS_DENIED_ERROR: DROP command denied to user 'xingya_app'@'localhost' for table 'ledger'
 PASS  权限：app 不能建账号  — ER_SPECIFIC_ACCESS_DENIED_ERROR: Access denied; you need (at least one of) the CREATE USER privilege(s) for this operation
 PASS  CHECK：余额缓存不可为负  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_balances_nonneg' is violated.
 PASS  购买并持有物品
 PASS  UNIQUE：同一物品只能买一次  — ER_DUP_ENTRY: Duplicate entry '1-hat-leaf' for key 'child_items.uq_child_items_item'
 PASS  UNIQUE：同一槽位只能穿戴一件  — ER_DUP_ENTRY: Duplicate entry '1-head' for key 'child_items.uq_child_items_equipped'
-PASS  星星余额 = SUM(delta) = 最后一行 balance_after  — 13
+PASS  星星余额 = SUM(delta) = 最后一行 balance_after  — 15
 PASS  复合外键：只能兑换本家庭的奖励  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`redemptions`, 
 PASS  CHECK：批准必须记录家长与时间  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_redemptions_decision' is violated.
 PASS  CHECK：档位星价 1–5000  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_pet_tiers_prices' is violated.
@@ -237,5 +254,5 @@ PASS  CHECK：工具循环上限设置不超过 20 步  — ER_CHECK_CONSTRAINT_
 PASS  CHECK：运营分析最小分组 3–50  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_stats_group' is violated.
 PASS  角色本身为锁定账号（不可登录）
 
-结构统计: {"tables":67,"fks":149,"checks":180,"uniques":71,"generated":12}
-合计 236 项，通过 236，失败 0
+结构统计: {"tables":67,"fks":149,"checks":181,"uniques":71,"generated":12}
+合计 255 项，通过 255，失败 0

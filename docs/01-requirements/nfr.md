@@ -9,12 +9,12 @@
 ### 4.5.1 幂等
 - 所有需登录的写请求（POST/PUT/PATCH/DELETE）必须带 `X-Client-Request-Id`（小写 UUID v4），缺失 → `400 VALIDATION_FAILED`。客户端为每个用户动作生成一次，自动重试沿用同一个。
 - 通用机制：事务第一步插入 `idempotency_requests(actor, requestId, operation, requestHash, 202 占位)`；业务完成后写入最终 2xx 响应并提交。并发的重复请求在唯一键上等待第一个事务结束，随后读取已存响应原样返回；同 ID 不同请求体 → `409 IDEMPOTENCY_KEY_REUSED`。业务错误（4xx）导致回滚，不占用该 ID。记录保留 30 天。
-- 业务级二次保险：`plays(child_id, client_request_id)` 唯一键；`attempts`/`review_sessions` 的 `play_id` 唯一键（一次作答只结算一次）；`ledger(child_id, currency, source_key)` 唯一键（如 `attempt:{id}`、`frag:level:{courseId}:{levelKey}:{date}`、`review:{date}`、`streak:{m}:{start}`、`purchase:{itemId}`、`pet:adopt:{speciesKey}`、`den:expand:{n}`、`discovery:spot:{id}`、`discovery:set:{setId}`、`discovery:total:{n}`、`gift:{id}:out`、`redemption:{id}:hold`）；`hiding_spots(attempt_id, spot_no)`、`yahaha_finds(spot_id)` 唯一键；`ai_jobs` 入队带客户端请求 ID（通用幂等表）。
-- 例外（不写幂等表，但天然幂等）：心跳（按时间差累加）、呀哈哈队长聊天（`ai_chat_usage` 唯一键防重放，不保存回复文本）、登出、逐题作答（每题只记第一次，重复提交返回同一结果）、点开藏匿点（揭晓只成功一次）。未登录接口（注册、登录、找回密码）不适用，靠邮箱唯一等自然约束。
+- 业务级二次保险：`plays(child_id, client_request_id)` 唯一键；`attempts`/`review_sessions` 的 `play_id` 唯一键（一次作答只结算一次）；`ledger(child_id, currency, source_key)` 唯一键（如 `attempt:{id}`、`frag:level:{courseId}:{levelKey}:{date}`、`review:{date}`、`streak:{m}:{start}`、积分 `listen:{playId}:{target}` / `word:{date}:{发音键}` / `review_correct:{date}:{reviewItemId}` / `petbonus:attempt:{id}` / `convert:{请求 ID}`（ADR 0017）、`purchase:{itemId}`、`pet:adopt:{speciesKey}`、`den:expand:{n}`、`discovery:spot:{id}`、`discovery:set:{setId}`、`discovery:total:{n}`、`gift:{id}:out`、`redemption:{id}:hold`）；`hiding_spots(attempt_id, spot_no)`、`yahaha_finds(spot_id)` 唯一键；`ai_jobs` 入队带客户端请求 ID（通用幂等表）。
+- 例外（不写幂等表，但天然幂等）：心跳（按时间差累加）、呀哈哈队长聊天（`ai_chat_usage` 唯一键防重放，不保存回复文本）、登出、逐题作答（每题只记第一次，重复提交返回同一结果）、点开藏匿点（揭晓只成功一次）、听发音积分（`source_key` 唯一键保证每个目标只发一次，重复返回 `awarded:false`）。未登录接口（注册、登录、找回密码）不适用，靠邮箱唯一等自然约束。
 
 ### 4.5.2 事务与锁
 - 一个业务操作 = 一个数据库事务（REPEATABLE READ）。外部调用（LLM、图像、OCR、SMTP、OSS、Piper 进程）从不放在事务里：邮件先写 `email_outbox` 随事务提交，再由发送任务投递；AI 与音频生成先写 `ai_jobs` 随事务提交，再由任务执行器处理，结果在新事务中写回。
-- 锁顺序（避免死锁）：① 幂等行 → ② 涉及的 `balances` 行按 `(child_id, currency)` 升序（同一孩子先 `star` 后 `fragment`）→ ③ 业务行（`plays`、`level_progress`、`child_pets`、`pet_dens`、`hiding_spots`、`yahaha_styles`、`drop_rules`、`redemptions`、`usage_days`、`child_controls` 等）→ ④ 全站行（`ai_budget_months`）→ ⑤ 角色预算行（`agent_budget_months`，第 10 部分）。全部使用显式 `SELECT … FOR UPDATE`。呀哈哈队长聊天的模型调用在两个事务之间进行（事务一预留、事务二结算），不持有行锁。
+- 锁顺序（避免死锁）：① 幂等行 → ② 涉及的 `balances` 行按 `(child_id, currency)` 升序（同一孩子按 `star` → `fragment` → `point`）→ ③ 业务行（`plays`、`level_progress`、`child_pets`、`pet_dens`、`hiding_spots`、`yahaha_styles`、`drop_rules`、`redemptions`、`usage_days`、`child_controls` 等）→ ④ 全站行（`ai_budget_months`）→ ⑤ 角色预算行（`agent_budget_months`，第 10 部分）。全部使用显式 `SELECT … FOR UPDATE`。呀哈哈队长聊天的模型调用在两个事务之间进行（事务一预留、事务二结算），不持有行锁。
 - 死锁或锁等待超时（`ER_LOCK_DEADLOCK`/`ER_LOCK_WAIT_TIMEOUT`）自动重试整个事务最多 2 次。
 
 ### 4.5.3 账本只追加
@@ -61,9 +61,9 @@
 5. **举报与屏蔽**：一键举报（消息立即隐藏）、孩子可屏蔽、系统管理员 48 小时内处理。
 6. **AI 护栏**：儿童系统守则（不可关闭）+ 必挂的 `child-safety` 技能、面向孩子的技能与角色须单独的儿童安全审核、输入输出双向过滤、个人信息拦截、每日配额、时长计入、可关闭、全站开关、不存对话（没有聊天记忆）、呀哈哈队长只能只读本孩子已学的词、月度预算用完友好提示。
 7. **排行榜克制**：只算学习所得；全站榜只显示昵称与头像；可退出。
-8. **健康使用**：每日时长、可用时段、服务端强制、友好休息页；被动行为不发星、不发碎片、不打开藏匿点（避免“刷点击”）；呀哈哈家族成员每日上限并在界面明示“今天还能找 N 个”；没有付费、没有抽奖购买、没有用真实货币换任何东西。
+8. **健康使用**：每日时长、可用时段、服务端强制、友好休息页；被动行为不发星、不发碎片、不打开藏匿点（避免“刷点击”）；听发音只发积分且每个目标每次作答一次（照旧系统，ADR 0017）；呀哈哈家族成员每日上限并在界面明示“今天还能找 N 个”；没有付费、没有抽奖购买、没有用真实货币换任何东西。
 9. **录音**：跟读录音只在浏览器内存，不上传。
-10. **内容**：全部原创形象；AI 生成的课程、伙伴、呀哈哈家族款式必须经过自动检查与系统管理员审核才发布，孩子永远看不到未审核内容；图像提示词禁止模仿现有角色与在世艺术家；课程题目与解析同样经过安全词表检查。
+10. **内容**：全部原创形象，唯一具名例外是游戏搭档（马里奥、林克）的固定复用素材（用户 2026-10-22 决定，[ADR 0018](../adr/0018-mario-game-partner.md)：只用于学习首页、关内进度条与结算页卡片，放在 `seeds/partners/`，可不改代码替换）；AI 工作室仍不得生成任天堂角色；AI 生成的课程、伙伴、呀哈哈家族款式必须经过自动检查与系统管理员审核才发布，孩子永远看不到未审核内容；图像提示词禁止模仿现有角色与在世艺术家；课程题目与解析同样经过安全词表检查。
 11. **伙伴与收集**：伙伴不可交易、不可转赠；收集只来自学习；稀有度与概率对系统管理员可见，界面不制造“差一点就中”的诱导。
 
 ### 8.3 无障碍基线
@@ -123,7 +123,8 @@
 | 伙伴 | 用碎片领养 → 设为跟随伙伴 → 学习后经验增加 → 跨阶段换形象 |
 | 工作室 | 上传资料 → AI 分析（桩）→ 生成草稿（桩）→ 红色检查项修正 → 试玩 → 审核 → 发布（Piper 桩）→ 孩子端看到新版本 |
 | 技能与 AI 角色 | 导入 SKILL.md 包（含脚本）→ 导入报告显示脚本为惰性文本 → 编辑产生 v2 → 试运行台（桩）显示输出、费用、耗时 → 审核发布 → 挂到课程设计师并固定版本 → 角色审核发布 → 课程页一句话框“@课程设计师 …”→ 预估 → 确认 → 整课流水线逐步完成（桩）→ 草稿待审核 → 回滚技能到 v1 后重跑使用 v1；呀哈哈队长预算用完时孩子端友好提示 |
-| 复习 | 时钟推进 1 天 → 到期数显示 → 完成复习 → +2 星 → 第二次不再发 |
+| 复习 | 时钟推进 1 天 → 到期数显示 → 完成复习 → 答对每条 +1 积分、+2 碎片、星星不变 → 第二次不再发 |
+| 积分 | 闯关中点同一喇叭 2 次 → 只 +0.1 积分 → 有跟随伙伴时通关另得伙伴附赠积分 → 攒满 10 积分换 1 颗星 → 星星 +1、学习星不变 |
 | 购买 | 购买装扮并穿戴；价格变化提示；余额不足提示 |
 | 兑换 | 孩子申请（冻结）→ 家长批准（扣除）；另一单拒绝（释放） |
 | 赠送 | 兄弟姐妹之间赠送；超过 20 颗/天被拒 |

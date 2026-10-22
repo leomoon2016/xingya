@@ -8,6 +8,7 @@
 | `safety/` | 聊天过滤词表与规则、提示词禁止词表、AI 角色系统守则 `agent-guard.md`、儿童安全测试集 | api 启动时读取（**不入库**，守则不可关闭） |
 | `phrases/` | 跨家庭预设短语与表情白名单 | api 启动时读取（不入库） |
 | `avatars/` | 孩子可选的原创头像清单 | api 启动时读取（不入库；图片在 OSS/CDN） |
+| `partners/` | 游戏搭档（马里奥、林克）复用的旧素材与主题清单 `partners.json`（ADR 0018，第三方 IP 的唯一具名例外） | api 启动时读取清单（不入库）；图片由 `xingya seeds:apply` 上传到 OSS `pub/partners/` |
 | `shop/` | 装扮初始数据 | 部署步骤 `xingya seeds:apply` 写入数据库（只插入缺失项，不覆盖后台修改） |
 | `skills/` | 17 个默认技能（SKILL.md 文件夹格式，无可执行代码） | `xingya seeds:apply` 导入为 v1 草稿（只插入缺失项） |
 | `agents/` | 7 个默认角色的技能挂载 `defaults.json` | `xingya seeds:apply` 写入白名单与 v1 草稿的挂载（只插入缺失项） |

@@ -14,7 +14,7 @@
 - [ ] 只插入缺失行：集成测试连续执行两次，数据库内容完全相同。
 - [ ] 不覆盖后台修改：集成测试先导入、再模拟后台修改某行，然后再次执行，被修改的行保持修改后的值；已有行从不被删除。
 - [ ] `seeds/` 中需入库的子目录为空或不存在时，命令成功退出且不写任何行。
-- [ ] 启动时读取、不入库的子目录（`course-templates`、`safety`、`phrases`、`avatars`）不会被 `seeds:apply` 写入数据库；`samples` 不会被自动导入。
+- [ ] 启动时读取、不入库的子目录（`course-templates`、`safety`、`phrases`、`avatars`、`partners`）不会被 `seeds:apply` 写入数据库（`partners` 图片上传 OSS 随 W10–11 游戏搭档实现，见 ADR 0018）；`samples` 不会被自动导入。
 - [ ] `tools/validate-seeds` 使用 `packages/seed-schema`（与需要时的 `packages/skill-format`）中的模式校验 `seeds/` 中已存在的文件；格式错误时以非零退出并指出文件与原因（每类至少一个反例测试）。
 - [ ] 校验拒绝 `seeds/skills/` 中的可执行文件与 `scripts/` 目录（有反例测试）。
 - [ ] `tools/validate-seeds` 可通过统一的工作区命令运行（供 CI 的 `seeds` 阶段调用）。

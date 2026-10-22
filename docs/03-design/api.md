@@ -53,6 +53,7 @@
 | 409 | `RULE_INVALID` | 投放规则不合法（`details.errors[]`）；数据库 CHECK 兜底 |
 | 400 | `PROMPT_BLOCKED` | 描述命中提示词禁止词表（`details.terms`） |
 | 409 | `INSUFFICIENT_STARS` / `PRICE_CHANGED` / `ALREADY_OWNED` | 星星不足 / 价格已变（`details.currentPrice`）/ 已拥有 |
+| 409 | `INSUFFICIENT_POINTS` | 换星时积分不足 |
 | 409 | `ALREADY_DECIDED` / `PENDING_LIMIT` | 审批已处理 / 待审批已达 3 个 |
 | 409 | `GIFT_DAILY_LIMIT` / `MESSAGE_DAILY_LIMIT` | 当日赠送 20 颗 / 消息 50 条已满 |
 | 409 | `EMAIL_IN_USE` / `USERNAME_IN_USE` / `NICKNAME_IN_USE` | 唯一性冲突 |
@@ -100,7 +101,8 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | GET /courses/:courseId/map | K | 课程路线图（按当前版本）：`units[{unitKey, title, state: locked\|open\|completed, levelsPassed, levelCount, levels[{levelId, levelKey, state: locked\|open\|passed, bestStars}]}]`；含“今天还能找 N 个” |
 | POST /levels/:levelId/plays | K | 开始闯关作答：只返回题目可见部分（选项已打乱、选项与词块 ID 已换成本次作答的随机令牌）与素材 CDN 地址，不含答案 |
 | POST /plays/:playId/answers | K | 提交一题 `{questionId, response}` → `{correct, correctOptionId/answer, explanation}`；每题只记第一次 |
-| POST /plays/:playId/finish | K | 完成：结算星星、碎片、伙伴经验、复习入队，返回 3 个藏匿点（只有编号与位置）；幂等 |
+| POST /plays/:playId/listen | K | 听发音积分 `{target}` → `{awarded, pointsDelta, points}`；每次作答每个目标一次 0.1（ADR 0017）；已结束 → `409 PLAY_FINISHED` |
+| POST /plays/:playId/finish | K | 完成：结算星星、碎片、伙伴经验与伙伴附赠积分（复习：答对积分与碎片，不发星星）、复习入队，返回 3 个藏匿点（只有编号与位置）；幂等 |
 | GET /review/summary | K | 今日到期、已复习、剩余额度、是否完成 |
 | POST /review/plays | K | 开始复习作答（≤ 剩余额度）；作答与完成用上面两个 `/plays/:playId/*` 端点 |
 | GET /me/streak | K | 连续天数 |
@@ -110,7 +112,9 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 
 | 方法 路径 | 主体 | 说明 |
 | --- | --- | --- |
-| GET /stars | K | 星星可用与冻结、碎片余额、最近流水 |
+| GET /stars | K | 星星可用与冻结、碎片与积分余额、最近流水 |
+| GET /points | K | 积分余额、今日复习积分（/30）、今日单词本听读积分（/10）、积分流水（分页） |
+| POST /points/conversions | K | 换星 `{stars}`（1–1000，10 积分 = 1 星；幂等） |
 | GET /children/:id/ledger | P | 孩子流水（分页） |
 | POST /children/:id/awards | P | 手动奖励 1–50 |
 | GET /shop | K | 物品与是否拥有 |
@@ -261,7 +265,7 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | 邀请/停用家长 | 本 ✓ | — | — |
 | 添加/修改/归档孩子、设 PIN 与密码、解锁 | 本 ✓ | — | — |
 | 标记/撤销家庭设备、查看设备与远程下线 | 本 ✓ | — | — |
-| 闯关、复习、点开藏匿点、领养伙伴、扩建营地、购买、穿戴、申请兑换、赠送 | — | 本人 ✓ | — |
+| 闯关、复习、听发音积分、换星、点开藏匿点、领养伙伴、扩建营地、购买、穿戴、申请兑换、赠送 | — | 本人 ✓ | — |
 | 查看孩子进度、流水、报告、伙伴、图鉴 | 本 ✓ | 本人（自己的进度、流水、伙伴、图鉴） | — |
 | 手动奖励星星 | 本 ✓ | — | — |
 | 维护奖励清单、审批兑换 | 本 ✓ | — | — |

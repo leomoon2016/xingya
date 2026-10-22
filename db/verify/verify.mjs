@@ -197,7 +197,8 @@ await expectErr('权限：app 不能 DELETE 账本', app, `DELETE FROM ledger WH
 
 // 10) 账本：碎片（同一只追加账本的第二币种）
 await expectOk('碎片：通关 +3、复习 +2', app, `${led('fragment', 'level_pass', 3, 3, 'frag:level:en-g1-a:u01:l01:2026-10-21')}; ${led('fragment', 'review_day', 2, 5, 'review:2026-10-21')}`);
-await expectOk('同一 source_key 在不同币种下各记一次', app, led('star', 'review_day', 2, 43, 'review:2026-10-21'));
+await expectOk('同一 source_key 在不同币种下各记一次', app, led('star', 'streak', 3, 44, 'review:2026-10-21'));
+await expectErr('CHECK：复习不发星星（review_day 只用于碎片，ADR 0017）', app, led('star', 'review_day', 2, 46, 'review:2026-10-19'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('幂等：碎片同一 source_key 只入账一次', app, led('fragment', 'review_day', 2, 7, 'review:2026-10-21'), [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：碎片不能用于购买装扮（币种与类型匹配）', app, led('fragment', 'purchase', -1, 4, 'purchase:hat-x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：碎片不能由家长奖励（无被动或人工来源）', app, led('fragment', 'parent_award', 5, 10, 'award:f', '1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
@@ -209,20 +210,42 @@ await expectErr('权限：app 不能 DELETE 碎片流水', app, `DELETE FROM led
 const [[fsum]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND currency='fragment'`);
 ok('碎片余额 = SUM(delta) = 5（与星星分开计算）', Number(fsum.s) === 5);
 const [[ls]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND counts_for_leaderboard=1`);
-ok('“学习星”只统计星星的 level_pass/review_day/streak', Number(ls.s) === 3, String(ls.s));
+ok('“学习星”只统计星星的 level_pass/streak', Number(ls.s) === 4, String(ls.s));
+
+// 10b) 账本：积分（同一只追加账本的第三币种；0.01 为单位，ADR 0017）
+await expectOk('积分：关内听发音 +0.1、单词本听发音 +0.1、复习答对 +1、伙伴附赠', app, `${led('point', 'level_listen', 10, 10, 'listen:7:q1:prompt')}; ${led('point', 'word_listen', 10, 20, 'word:2026-10-21:en.bat.animal:us')}; ${led('point', 'review_correct', 100, 120, 'review_correct:2026-10-21:5')}; ${led('point', 'pet_bonus', 30, 150, 'petbonus:attempt:1')}`);
+await expectErr('幂等：同一作答同一发音目标只得一次积分', app, led('point', 'level_listen', 10, 160, 'listen:7:q1:prompt'), [], ['ER_DUP_ENTRY']);
+await expectErr('幂等：同一复习条目同一天只得一次积分', app, led('point', 'review_correct', 100, 250, 'review_correct:2026-10-21:5'), [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：听发音每次固定 0.1 积分', app, led('point', 'level_listen', 20, 170, 'listen:7:q2:prompt'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：伙伴附赠最多 3 星 × 1.00', app, led('point', 'pet_bonus', 301, 451, 'petbonus:attempt:2'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：积分不能由家长奖励', app, led('point', 'parent_award', 100, 250, 'award:p', '1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：积分不能直接购买装扮', app, led('point', 'purchase', -100, 50, 'purchase:hat-p'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：星星不能记为听发音来源', app, led('star', 'level_listen', 10, 54, 'listen:7:q3:prompt'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('复习答对 9 题（不同条目）累计到 10.50 积分', app, [6,7,8,9,10,11,12,13,14].map((i, k) => led('point', 'review_correct', 100, 250 + k * 100, `review_correct:2026-10-21:${i}`)).join('; '));
+await expectOk('积分换星：−10 积分 与 +1 星 同一 source_key', app, `${led('point', 'point_convert', -1000, 50, 'convert:r1')}; INSERT INTO ledger (family_id,child_id,currency,kind,delta,balance_after,source_key,local_date) VALUES (1,1,'star','point_convert',1,45,'convert:r1','2026-10-21')`);
+await expectErr('CHECK：兑换必须是 10 积分的整数倍', app, led('point', 'point_convert', -1500, 0, 'convert:r2'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：一次最多兑换 1000 星', app, `INSERT INTO ledger (family_id,child_id,currency,kind,delta,balance_after,source_key,local_date) VALUES (1,1,'star','point_convert',1001,1046,'convert:r3','2026-10-21')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：积分余额不可为负', app, led('point', 'point_convert', -1000, -1000, 'convert:r4'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('权限：app 不能 UPDATE 积分流水', app, `UPDATE ledger SET delta=20 WHERE currency='point'`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+{ const [[ps]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND currency='point'`);
+  ok('积分余额 = SUM(delta) = 0.50（1050 − 1000 单位）', Number(ps.s) === 50, String(ps.s));
+  const [[ls2]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND counts_for_leaderboard=1`);
+  ok('积分换来的星星是奖励星（不计学习星）', Number(ls2.s) === 4, String(ls2.s)); }
+await expectOk('作答记录跟随伙伴等级快照', app, `INSERT INTO plays (family_id,child_id,kind,client_request_id,local_date,items,expires_at,companion_level) VALUES (1,1,'review',?,'2026-10-22','[]',NOW()+INTERVAL 2 HOUR,12)`, [uuid(13)]);
+await expectErr('CHECK：伙伴等级快照 1–100', app, `INSERT INTO plays (family_id,child_id,kind,client_request_id,local_date,items,expires_at,companion_level) VALUES (1,1,'review',?,'2026-10-22','[]',NOW()+INTERVAL 2 HOUR,0)`, [uuid(14)], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 
 // 11) 商店、现实奖励
 await app.query(`INSERT INTO shop_items (id,slot,name,price,image_asset_id,sort_order,status) VALUES ('hat-leaf','head','叶子帽',30,1,1,'listed'),('hat-star','head','星星帽',40,1,2,'listed')`);
 await expectErr('权限：app 不能 DROP 表', app, `DROP TABLE ledger`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('权限：app 不能建账号', app, `CREATE USER 'evil'@'%' IDENTIFIED BY 'x'`, [], ['ER_SPECIFIC_ACCESS_DENIED_ERROR']);
 await expectErr('CHECK：余额缓存不可为负', app, `UPDATE balances SET balance=-1 WHERE child_id=1 AND currency='star'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectOk('购买并持有物品', app, `${led('star', 'purchase', -30, 13, 'purchase:hat-leaf')};
+await expectOk('购买并持有物品', app, `${led('star', 'purchase', -30, 15, 'purchase:hat-leaf')};
   INSERT INTO child_items (family_id,child_id,item_id,slot,equipped,purchase_ledger_id) VALUES (1,1,'hat-leaf','head',1,LAST_INSERT_ID())`);
 await expectErr('UNIQUE：同一物品只能买一次', app, `INSERT INTO child_items (family_id,child_id,item_id,slot,purchase_ledger_id) SELECT 1,1,'hat-leaf','head',MAX(id) FROM ledger`, [], ['ER_DUP_ENTRY']);
 await app.query(`INSERT INTO child_items (family_id,child_id,item_id,slot,equipped,purchase_ledger_id) SELECT 1,1,'hat-star','head',0,MAX(id) FROM ledger`);
 await expectErr('UNIQUE：同一槽位只能穿戴一件', app, `UPDATE child_items SET equipped=1 WHERE item_id='hat-star'`, [], ['ER_DUP_ENTRY']);
 const [[ss]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND currency='star'`);
-ok('星星余额 = SUM(delta) = 最后一行 balance_after', Number(ss.s) === 13, String(ss.s));
+ok('星星余额 = SUM(delta) = 最后一行 balance_after', Number(ss.s) === 15, String(ss.s));
 await app.query(`INSERT INTO reward_options (id,family_id,title,star_price,created_by_parent_id) VALUES (1,1,'周末看电影',10,1),(2,2,'吃冰淇淋',5,2)`);
 await expectErr('复合外键：只能兑换本家庭的奖励', app, `INSERT INTO redemptions (family_id,child_id,reward_option_id,title_snapshot,price) VALUES (1,1,2,'吃冰淇淋',5)`, [], ['ER_NO_REFERENCED_ROW_2']);
 await app.query(`INSERT INTO redemptions (id,family_id,child_id,reward_option_id,title_snapshot,price) VALUES (1,1,1,1,'周末看电影',10)`);

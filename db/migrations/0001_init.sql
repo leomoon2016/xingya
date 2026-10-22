@@ -799,6 +799,7 @@ CREATE TABLE plays (                                         -- 一次作答（�
   started_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   expires_at        DATETIME(3)  NOT NULL,
   finished_at       DATETIME(3)  NULL,
+  companion_level   TINYINT UNSIGNED NULL,                   -- 开始时跟随伙伴的等级快照（伙伴附赠积分用，ADR 0017）；没有跟随伙伴为 NULL
   PRIMARY KEY (id),
   UNIQUE KEY uq_plays_request (child_id, client_request_id),
   KEY ix_plays_child (child_id, status, started_at),
@@ -808,6 +809,7 @@ CREATE TABLE plays (                                         -- 一次作答（�
   CONSTRAINT ck_plays_kind CHECK ((kind = 'level') = (level_id IS NOT NULL) AND (level_id IS NULL) = (course_version_id IS NULL)),
   CONSTRAINT ck_plays_finished CHECK ((status = 'finished') = (finished_at IS NOT NULL)),
   CONSTRAINT ck_plays_expiry CHECK (expires_at > started_at),
+  CONSTRAINT ck_plays_companion_level CHECK (companion_level IS NULL OR companion_level BETWEEN 1 AND 100),
   CONSTRAINT ck_plays_request_id CHECK (REGEXP_LIKE(client_request_id, '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', 'c'))
 ) ENGINE=InnoDB;
 
@@ -931,22 +933,24 @@ CREATE TABLE review_sessions (                               -- 只追加：一�
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 5. 星星与碎片 stars（6 张；ledger 只追加：应用账号无 UPDATE/DELETE）
+-- 5. 星星、碎片与积分 stars（6 张；ledger 只追加：应用账号无 UPDATE/DELETE）
+--    积分（currency='point'，ADR 0017）的 delta / balance_after 以 0.01 积分为单位（1 积分 = 100）
 -- ---------------------------------------------------------------------
-CREATE TABLE ledger (                                        -- 星星与碎片共用的只追加账本；currency 区分币种
+CREATE TABLE ledger (                                        -- 星星、碎片与积分共用的只追加账本；currency 区分币种
   id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   family_id       BIGINT UNSIGNED NOT NULL,
   child_id        BIGINT UNSIGNED NOT NULL,
-  currency        ENUM('star','fragment') NOT NULL,
+  currency        ENUM('star','fragment','point') NOT NULL,  -- 枚举顺序即锁顺序：star → fragment → point
   kind            ENUM('level_pass','review_day','streak','parent_award',
                        'gift_in','gift_out','purchase',
                        'redeem_hold','redeem_release','redeem_debit',
-                       'pet_adopt','den_expand','discovery','discovery_bonus') NOT NULL,
+                       'pet_adopt','den_expand','discovery','discovery_bonus',
+                       'level_listen','word_listen','review_correct','pet_bonus','point_convert') NOT NULL,
   delta           INT          NOT NULL,
   balance_after   INT          NOT NULL,                     -- 该孩子该币种的余额
-  source_key      VARCHAR(96)  NOT NULL,                     -- 业务幂等键，如 attempt:123、frag:level:en-g1-a:u03:l01:2026-10-21
+  source_key      VARCHAR(96)  NOT NULL,                     -- 业务幂等键，如 attempt:123、frag:level:en-g1-a:u03:l01:2026-10-21、listen:{playId}:{target}、convert:{requestId}
   local_date      DATE         NOT NULL,
-  counts_for_leaderboard TINYINT(1) AS (currency = 'star' AND kind IN ('level_pass','review_day','streak')) STORED,  -- = “学习星”
+  counts_for_leaderboard TINYINT(1) AS (currency = 'star' AND kind IN ('level_pass','streak')) STORED,  -- = “学习星”（复习不发星，ADR 0017）
   actor_parent_id BIGINT UNSIGNED NULL,
   note            VARCHAR(100) NULL,
   created_at      DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -959,14 +963,22 @@ CREATE TABLE ledger (                                        -- 星星与碎片�
   CONSTRAINT fk_ledger_child FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_ledger_parent FOREIGN KEY (family_id, actor_parent_id) REFERENCES parents (family_id, id),
   CONSTRAINT ck_ledger_currency_kind CHECK (
-       (currency = 'star'     AND kind <> 'discovery')
-    OR (currency = 'fragment' AND kind IN ('level_pass','review_day','discovery','pet_adopt'))),
+       (currency = 'star'     AND kind NOT IN ('discovery','review_day','level_listen','word_listen','review_correct','pet_bonus'))
+    OR (currency = 'fragment' AND kind IN ('level_pass','review_day','discovery','pet_adopt'))
+    OR (currency = 'point'    AND kind IN ('level_listen','word_listen','review_correct','pet_bonus','point_convert'))),
   CONSTRAINT ck_ledger_sign CHECK (
-       (kind IN ('level_pass','review_day','streak','parent_award','gift_in','redeem_release','discovery','discovery_bonus') AND delta > 0)
-    OR (kind IN ('gift_out','purchase','redeem_hold','redeem_debit','pet_adopt','den_expand') AND delta < 0)),
+       (kind IN ('level_pass','review_day','streak','parent_award','gift_in','redeem_release','discovery','discovery_bonus',
+                 'level_listen','word_listen','review_correct','pet_bonus') AND delta > 0)
+    OR (kind IN ('gift_out','purchase','redeem_hold','redeem_debit','pet_adopt','den_expand') AND delta < 0)
+    OR (kind = 'point_convert' AND ((currency = 'star' AND delta > 0) OR (currency = 'point' AND delta < 0)))),  -- 积分换星：积分出、星星入
   CONSTRAINT ck_ledger_ranges CHECK (
        (kind <> 'level_pass'      OR delta BETWEEN 1 AND 3)    -- 星：提升差额 1–3；碎片：本次星级 1–3
-   AND (kind <> 'review_day'      OR delta = 2)
+   AND (kind <> 'review_day'      OR delta = 2)                -- 只有碎片
+   AND (kind NOT IN ('level_listen','word_listen') OR delta = 10)   -- +0.1 积分
+   AND (kind <> 'review_correct'  OR delta = 100)              -- 每道答对的复习题 +1 积分
+   AND (kind <> 'pet_bonus'       OR delta BETWEEN 10 AND 300) -- 星数 1–3 × 每星 0.10–1.00 积分
+   AND (kind <> 'point_convert'   OR (currency = 'star' AND delta BETWEEN 1 AND 1000)
+                                  OR (currency = 'point' AND delta BETWEEN -1000000 AND -1000 AND MOD(delta, 1000) = 0))  -- 10 积分 = 1 星
    AND (kind <> 'discovery'       OR delta = 1)
    AND (kind <> 'discovery_bonus' OR delta BETWEEN 1 AND 50)
    AND (kind <> 'parent_award'    OR delta BETWEEN 1 AND 50)
@@ -975,9 +987,9 @@ CREATE TABLE ledger (                                        -- 星星与碎片�
   CONSTRAINT ck_ledger_actor CHECK ((kind = 'parent_award') = (actor_parent_id IS NOT NULL))
 ) ENGINE=InnoDB;
 
-CREATE TABLE balances (                                      -- 每孩子每币种余额缓存 + 行锁；每晚对账
+CREATE TABLE balances (                                      -- 每孩子每币种余额缓存 + 行锁；每晚对账（积分以 0.01 为单位）
   child_id       BIGINT UNSIGNED NOT NULL,
-  currency       ENUM('star','fragment') NOT NULL,
+  currency       ENUM('star','fragment','point') NOT NULL,
   family_id      BIGINT UNSIGNED NOT NULL,
   balance        INT          NOT NULL DEFAULT 0,
   last_ledger_id BIGINT UNSIGNED NULL,
@@ -1545,6 +1557,8 @@ CREATE TABLE daily_reports (                                 -- 每晚聚合，�
   stars_in          INT UNSIGNED NOT NULL DEFAULT 0,
   stars_out         INT UNSIGNED NOT NULL DEFAULT 0,
   fragments_in      INT UNSIGNED NOT NULL DEFAULT 0,
+  points_in         INT UNSIGNED NOT NULL DEFAULT 0,           -- 积分收入，0.01 为单位
+  points_converted  INT UNSIGNED NOT NULL DEFAULT 0,           -- 兑换成星星的积分，0.01 为单位
   yahaha_found      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   top_missed        JSON         NOT NULL,                   -- [{wordId, misses}]，最多 5 个
   ai_messages       SMALLINT UNSIGNED NOT NULL DEFAULT 0,
