@@ -11,7 +11,7 @@
 
 ai_chat_usage
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。`ai_chat_usage` 记录 `agent_version_id`（外键到 `agent_versions`，受众必须是 `child`）与 `cost_fen`。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)。`ai_chat_usage` 记录 `agent_version_id`（外键到 `agent_versions`，受众必须是 `child`）与 `cost_fen`。
 
 ## 边界
 

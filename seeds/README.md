@@ -10,7 +10,7 @@
 | `avatars/` | 孩子可选的原创头像清单 | api 启动时读取（不入库；图片在 OSS/CDN） |
 | `partners/` | 游戏搭档（马里奥、林克）复用的旧素材与主题清单 `partners.json`（ADR 0018，第三方 IP 的唯一具名例外） | api 启动时读取清单（不入库）；图片由 `xingya seeds:apply` 上传到 OSS `pub/partners/` |
 | `shop/` | 装扮初始数据 | 部署步骤 `xingya seeds:apply` 写入数据库（只插入缺失项，不覆盖后台修改） |
-| `skills/` | 17 个默认技能（SKILL.md 文件夹格式，无可执行代码） | `xingya seeds:apply` 导入为 v1 草稿（只插入缺失项） |
+| `skills/` | 18 个默认技能（SKILL.md 文件夹格式，无可执行代码） | `xingya seeds:apply` 导入为 v1 草稿（只插入缺失项） |
 | `agents/` | 7 个默认角色的技能挂载 `defaults.json` | `xingya seeds:apply` 写入白名单与 v1 草稿的挂载（只插入缺失项） |
 | `samples/` | 示例课程（仅作示例） | **不自动导入**；需要时运维执行 `xingya course:import`，结果为草稿 |
 

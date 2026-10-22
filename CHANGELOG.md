@@ -12,6 +12,7 @@
 - 2026-10-21：目录调整（用户已批准，[ADR 0015](docs/adr/0015-admin-app-and-seeds.md)）——新增独立后台应用 `apps/admin`（独立 Vite 构建、`admin.<域名>` 子域名、独立 CSP，含 `e2e/`）；新增 `packages/ui`、`packages/skill-format`、`tools/safety-eval`；`apps/api/src/platform/{db,auth,logging,config}`、studio 模块子目录 `jobs/assets/skills/agents/runner/tools/providers`、`apps/api/test/{unit,concurrency,safety}`；`docs/04-ui-design` 的流程、线框、效果图按 `child/`、`parent/`、`admin/` 分组；部署步骤新增 `xingya seeds:apply`；整体评审追加“目录调整评审”。
 
 ### 变更
+- 2026-10-22：单词本照旧系统实现并进入 v1.0（用户决定，[ADR 0019](docs/adr/0019-wordbook-as-old-system.md)）——词条、AI 解释（呀哈哈队长技能 `word-explain`）、学习 / 闯关 / 考试、单词星（奖励星）、伙伴附赠、单词本里程碑与随机呀哈哈、考试保护、单词本听发音积分生效（Q30 后续 ① 已决定，新增 Q32）；`0001_init.sql` 新增 5 张表（共 72 张）、2 种星星 kind、`wordbook.random` 设置，藏匿点新增单词本来源；验证 299/299；排期 +1 周（约 21.5 周）。
 - 2026-10-22：伙伴最高等级改为 100（用户决定，与旧系统一致）——等级曲线与阶段起始等级（1/20/50/100）照旧系统；`pet_tiers` 默认 `max_level=100`、新增 `xp_quad_div`；复习积分每天 30 的上限保持不变；数据库重新验证 258/258。
 - 2026-10-22：恢复积分（用户决定，[ADR 0017](docs/adr/0017-points-currency.md)）——规则与旧系统完全一致：听发音 +0.1、复习答对 +1（每天 ≤ 30）、单词本听发音（每天 ≤ 10，v1.0 无单词本暂不产生）、跟随伙伴按等级附赠，10 积分换 1 星；复习不再发星星；`0001_init.sql` 的 `ledger`/`balances` 增加 `point` 币种，`plays` 增加伙伴等级快照，日报增加积分列；数据库重新验证 255/255。
 - 2026-10-22：正式系统一直使用马里奥（用户决定，[ADR 0018](docs/adr/0018-mario-game-partner.md)）——恢复游戏搭档（马里奥、林克），第三方 IP 规则增加具名例外，素材放 `seeds/partners/`，AI 工作室仍不生成任天堂角色；新增术语“积分”“换星”“游戏搭档”。

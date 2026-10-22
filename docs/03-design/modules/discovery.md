@@ -10,7 +10,7 @@
 
 yahaha_sets, yahaha_styles, drop_rules, hiding_spots, yahaha_finds
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。审计写入 family 的 `audit_events`（`target_type = 'drop_rule' | 'yahaha_style' | 'discovery_settings'`），没有单独的审计表。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)。审计写入 family 的 `audit_events`（`target_type = 'drop_rule' | 'yahaha_style' | 'discovery_settings'`），没有单独的审计表。
 
 ## 边界
 
@@ -25,6 +25,7 @@ yahaha_sets, yahaha_styles, drop_rules, hiding_spots, yahaha_finds
 
 ```ts
 placeSpotsInTx(tx, {attempt, child, courseId, unitKey, levelKey, grade, trigger}): SpotView[3]   // 只返回编号、种类、位置
+placeWordSpotInTx(tx, {child, wordTaskId? | milestoneNo?}): SpotView | null                     // 单词本（ADR 0019）：1 个必放款式的藏匿点；room = 0 或款式池为空 → null
 leftToday(child): number                                                               // “今天还能找 N 个”
 reveal(child, spotId): {found: false} | {found: true, style, fragment, bonus[]}
 getAlbum(child): {sets: [{set, styles: [{style | silhouette, count}]}], total}
@@ -66,6 +67,8 @@ stats(range): DiscoveryStats
 5. 计算今天已放置数 `used`（`SELECT MAX(daily_seq) … FOR UPDATE` on 该孩子当天的藏匿点）；可放置 `room = cap − used`。
 6. 对 3 个藏匿点依次：`room > 0` 且 `crypto.randomInt(100) < p` → 按稀有度权重抽款式；`guaranteed` 且三个都未命中且 `room > 0` → 第 1 个藏匿点强制放置。每放置一个：`daily_seq = used + 1`（唯一键 + CHECK ≤ 10 兜底）、款式 `placed_total + 1`（CHECK ≤ total_stock 兜底）、记录 `rule_id`（概率或必得来源的规则），规则 `consumed_quantity + 1`（CHECK ≤ total_quantity 兜底）。
 7. 插入 3 行 `hiding_spots`（`(attempt_id, spot_no)` 唯一，重复结算不会重复放置）。
+
+**单词本来源**（`placeWordSpotInTx`，ADR 0019）：不看投放规则（规则只针对关卡），也不看全局概率（单词本自己判定里程碑或随机）。步骤 4–5 与上面相同：款式池为空或 `room = 0` 时返回 null（里程碑保持待领取，随机作废）；否则按稀有度抽款式，插入 1 行 `spot_no = 1`、`spot_kind = 'page'` 的藏匿点，带 `word_task_id` 或 `word_milestone_no`（各自唯一；CHECK 保证来源只有一个，且一定有款式）。揭晓、碎片与图鉴与关卡藏匿点相同。
 
 ## 揭晓
 `UPDATE hiding_spots SET revealed_at = NOW(3) WHERE id = ? AND child_id = ? AND revealed_at IS NULL`：影响 1 行 → 首次揭晓：空的直接返回；有款式的在同一事务内 `stars.creditInTx(fragment, discovery, 1, discovery:spot:{id})` → `INSERT yahaha_finds` → 检查套组集齐（`discovery:set:{setId}`，奖励 `yahaha_sets.bonus_stars`）与累计里程碑（`discovery:total:{10|30|100}`，奖励 `discovery.milestone_bonus`），用 `discovery_bonus` 发星。影响 0 行 → 返回已记录结果（不发放）。不属于该孩子 → 404。

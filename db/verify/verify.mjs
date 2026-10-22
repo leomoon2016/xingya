@@ -38,7 +38,7 @@ await root.query('DROP DATABASE xingya');
 await root.query(SQL);
 const fp2 = await fingerprint(); const c2 = await counts();
 ok('从空库应用两次结构指纹一致', fp1 === fp2, `${fp1.slice(0, 12)} / ${fp2.slice(0, 12)}`);
-ok('表数=67', c2.tables === 67, JSON.stringify(c2));
+ok('表数=72', c2.tables === 72, JSON.stringify(c2));
 { const [miss] = await root.query(`SELECT table_name t FROM information_schema.tables WHERE table_schema='xingya' AND table_name NOT IN (SELECT Table_name FROM mysql.tables_priv WHERE Db='xingya' AND User='xingya_app_role')`);
   ok('授权全覆盖：每张表都有应用角色授权', miss.length === 0, JSON.stringify(miss)); }
 
@@ -217,7 +217,7 @@ await expectOk('积分：关内听发音 +0.1、单词本听发音 +0.1、复习
 await expectErr('幂等：同一作答同一发音目标只得一次积分', app, led('point', 'level_listen', 10, 160, 'listen:7:q1:prompt'), [], ['ER_DUP_ENTRY']);
 await expectErr('幂等：同一复习条目同一天只得一次积分', app, led('point', 'review_correct', 100, 250, 'review_correct:2026-10-21:5'), [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：听发音每次固定 0.1 积分', app, led('point', 'level_listen', 20, 170, 'listen:7:q2:prompt'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectErr('CHECK：伙伴附赠最多 3 星 × 1.00', app, led('point', 'pet_bonus', 301, 451, 'petbonus:attempt:2'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：伙伴附赠每星至少 0.10（1 星 × 0.10 = 10 单位）', app, led('point', 'pet_bonus', 5, 155, 'petbonus:attempt:2'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：积分不能由家长奖励', app, led('point', 'parent_award', 100, 250, 'award:p', '1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：积分不能直接购买装扮', app, led('point', 'purchase', -100, 50, 'purchase:hat-p'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：星星不能记为听发音来源', app, led('star', 'level_listen', 10, 54, 'listen:7:q3:prompt'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
@@ -292,6 +292,56 @@ await expectErr('复合外键：图鉴款式必须等于藏匿点中放置的款
 await expectErr('UNIQUE：同一藏匿点只能进一次图鉴', app, `INSERT INTO yahaha_finds (family_id,child_id,spot_id,style_id,fragment_ledger_id) SELECT 1,1,id,style_id,1 FROM hiding_spots WHERE attempt_id=1 AND spot_no=1`, [], ['ER_DUP_ENTRY']);
 await expectErr('幂等：同一藏匿点碎片只发一次', app, led('fragment', 'discovery', 1, 2, 'discovery:spot:1'), [], ['ER_DUP_ENTRY']);
 await expectErr('权限：app 不能删除图鉴', app, `DELETE FROM yahaha_finds`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+
+// 13b) 单词本（ADR 0019，与旧系统“我的单词”一致）
+await expectOk('单词本：词身份与词条（孩子 1：apple）', app, `INSERT INTO word_identities (id,family_id,child_id,normalized) VALUES (1,1,1,'apple'),(2,1,1,'banana'),(3,1,2,'apple');
+  INSERT INTO word_entries (id,family_id,child_id,identity_id,word,normalized,meaning_zh,phrases,examples) VALUES (1,1,1,1,'Apple','apple','苹果','[{"en":"an apple","zh":"一个苹果"}]','[]')`);
+await expectErr('UNIQUE：同一孩子同一个词只能有一条词条', app, `INSERT INTO word_entries (family_id,child_id,identity_id,word,normalized,phrases,examples) VALUES (1,1,1,'apple ','apple','[]','[]')`, [], ['ER_DUP_ENTRY']);
+await expectErr('复合外键：词条的词身份必须属于同一孩子', app, `INSERT INTO word_entries (family_id,child_id,identity_id,word,normalized,phrases,examples) VALUES (1,1,3,'pear','pear','[]','[]')`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('CHECK：短语最多 10 条', app, `INSERT INTO word_entries (family_id,child_id,identity_id,word,normalized,phrases,examples) VALUES (1,1,2,'banana','banana',JSON_ARRAY(1,2,3,4,5,6,7,8,9,10,11),'[]')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：单词不能超过 80 字符', app, `INSERT INTO word_entries (family_id,child_id,identity_id,word,normalized,phrases,examples) VALUES (1,1,2,REPEAT('a',81),'banana','[]','[]')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_DATA_TOO_LONG']);
+await expectOk('词身份按二进制比较：café 与 cafe 是两个词', app, `INSERT INTO word_identities (family_id,child_id,normalized) VALUES (1,1,'café'),(1,1,'cafe')`);
+await expectErr('CHECK：词身份必须是归一化小写', app, `INSERT INTO word_identities (family_id,child_id,normalized) VALUES (1,1,'Pear')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：闯关最高进度 0–3', app, `UPDATE word_identities SET best_challenge=4 WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：未学习的词没有首次学会时间', app, `UPDATE word_identities SET first_passed_at=NOW(3) WHERE id=2`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('首次学会：状态改为已掌握并记录时间', app, `UPDATE word_identities SET status='mastered', first_passed_at=NOW(3), best_challenge=3 WHERE id=1`);
+await expectOk('删除词条（词身份保留）', app, `DELETE FROM word_entries WHERE id=1`);
+{ const [[wi]] = await app.query(`SELECT status, best_challenge b FROM word_identities WHERE id=1`);
+  ok('删除词条后学习状态与最高进度保留', wi.status === 'mastered' && Number(wi.b) === 3, JSON.stringify(wi)); }
+await expectErr('权限：app 不能删除词身份', app, `DELETE FROM word_identities WHERE id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectErr('CHECK：模式星星余量 0–4', app, `INSERT INTO word_book_progress (child_id,family_id,challenge_units) VALUES (1,1,5)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('星星余量行', app, `INSERT INTO word_book_progress (child_id,family_id,challenge_units,exam_units) VALUES (1,1,4,0)`);
+const wtask = (id, mode, status, req, extra = '') => `INSERT INTO word_tasks (id,family_id,child_id,mode,status,word_count,question_count,snapshot,client_request_id,local_date${extra ? ',companion_level' : ''}) VALUES (${id},1,1,'${mode}','${status}',5,10,'{}','${uuid(req)}','2026-10-23'${extra ? ',' + extra : ''})`;
+await expectOk('开始单词闯关（记录跟随伙伴等级）', app, wtask(1, 'challenge', 'quiz', 60, '12'));
+await expectErr('UNIQUE：同一孩子同时只有一轮单词学习进行中', app, wtask(2, 'exam', 'quiz', 61), [], ['ER_DUP_ENTRY']);
+await expectOk('结算后可开始下一轮', app, `UPDATE word_tasks SET status='completed', completed_at=NOW(3), result='{}', revision=revision+1 WHERE id=1; ${wtask(2, 'exam', 'quiz', 61)}`);
+await expectErr('CHECK：完成必须同时有结果与完成时间', app, `UPDATE word_tasks SET status='completed' WHERE id=2`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：只有学习模式有学习卡阶段', app, `UPDATE word_tasks SET status='study' WHERE id=2`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：只有闯关记录跟随伙伴等级', app, `UPDATE word_tasks SET companion_level=5 WHERE id=2`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：每轮最多 50 个词', app, `UPDATE word_tasks SET word_count=51 WHERE id=2`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('UNIQUE：同一请求 ID 只开始一轮', app, `UPDATE word_tasks SET status='abandoned' WHERE id=2; ${wtask(3, 'study', 'study', 61)}`, [], ['ER_DUP_ENTRY']);
+await expectOk('随机判定记录', app, `INSERT INTO word_random_draws (child_id,draw_date,mode,identity_id,family_id,task_id) VALUES (1,'2026-10-23','challenge',1,1,1)`);
+await expectErr('UNIQUE：同日同模式同一个词只判定一次', app, `INSERT INTO word_random_draws (child_id,draw_date,mode,identity_id,family_id,task_id) VALUES (1,'2026-10-23','challenge',1,1,2)`, [], ['ER_DUP_ENTRY']);
+await expectErr('权限：app 不能删除随机判定记录', app, `DELETE FROM word_random_draws`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectOk('单词闯关进步星 +3（奖励星）与伙伴附赠积分', app, `${led('star', 'word_challenge', 3, 18, 'word:1')}; ${led('point', 'pet_bonus', 36, 86, 'petbonus:word:1')}`);
+await expectErr('CHECK：单词闯关单次最多 30 星', app, led('star', 'word_challenge', 31, 49, 'word:9'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：单词考试单次最多 20 星', app, led('star', 'word_exam', 21, 39, 'word:8'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：单词星只发星星', app, led('fragment', 'word_challenge', 1, 6, 'word:7'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：伙伴附赠积分最多 30 星 × 1.00', app, led('point', 'pet_bonus', 3001, 3087, 'petbonus:word:9'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+{ const [[lw]] = await app.query(`SELECT counts_for_leaderboard c FROM ledger WHERE child_id=1 AND kind='word_challenge'`);
+  ok('单词星是奖励星（不计学习星）', Number(lw.c) === 0, JSON.stringify(lw)); }
+const wspot = (cols, vals) => `INSERT INTO hiding_spots (family_id,child_id,spot_no,spot_kind,local_date,${cols}) VALUES (1,1,${vals})`;
+await expectOk('单词闯关 ≥80 分中签：放置 1 个有呀哈哈的藏匿点', app, wspot('word_task_id,style_id,daily_seq', `1,'page','2026-10-23',1,1,1`));
+await expectErr('CHECK：单词本来源只放有呀哈哈的藏匿点', app, wspot('word_task_id', `1,'page','2026-10-23',2`), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：单词本来源只有 1 号藏匿点', app, wspot('word_task_id,style_id,daily_seq', `2,'page','2026-10-23',2,1,2`), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：藏匿点只能有一个来源', app, wspot('attempt_id,word_task_id,style_id,daily_seq', `1,'page','2026-10-23',1,2,1,2`), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('单词本里程碑：每首次学会 5 个词必得 1 个', app, wspot('word_milestone_no,style_id,daily_seq', `1,'page','2026-10-23',1,1,2`));
+await expectErr('UNIQUE：同一里程碑只放置一次', app, wspot('word_milestone_no,style_id,daily_seq', `1,'page','2026-10-23',1,1,3`), [], ['ER_DUP_ENTRY']);
+await expectErr('UNIQUE：同一单词任务只放置一次', app, wspot('word_task_id,style_id,daily_seq', `1,'page','2026-10-23',1,1,4`), [], ['ER_DUP_ENTRY']);
+{ const [[st]] = await app.query(`SELECT value v FROM system_settings WHERE setting_key='wordbook.random'`);
+  const v = typeof st.v === 'string' ? JSON.parse(st.v) : st.v;
+  ok('单词本随机默认：开启、2000 基点、每日 2 个（旧系统）', v.enabled === true && v.probability_bps === 2000 && v.daily_limit === 2, JSON.stringify(v)); }
+await expectErr('CHECK：单词本随机概率 0–10000 基点', app, `UPDATE system_settings SET value=CAST('{"enabled":true,"probability_bps":10001,"daily_limit":2}' AS JSON) WHERE setting_key='wordbook.random'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 
 // 14) 投放规则边界（AI 只填写表单，数据库兜底）
 const rule = (o) => `INSERT INTO drop_rules (name,rule_type,spec,trigger_type,effect,probability_pct,daily_cap,total_quantity,consumed_quantity,starts_at,ends_at,created_by_admin_id) VALUES ('r','${o.t ?? 'campaign'}','${o.spec ?? '{}'}','${o.trig ?? 'level_pass'}','${o.eff ?? 'raise_probability'}',${o.p ?? 50},${o.cap ?? 'NULL'},${o.total ?? 'NULL'},${o.used ?? 0},'2026-11-01',${o.end ?? "'2026-11-08'"},1)`;

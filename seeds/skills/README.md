@@ -1,6 +1,6 @@
 # skills —— 默认技能（种子）
 
-每个子目录是一个 SKILL.md 文件夹格式的技能（v1.0 共 17 个，见 `docs/03-design/modules/agents.md` 工具目录一节）：
+每个子目录是一个 SKILL.md 文件夹格式的技能（v1.0 共 18 个，见 `docs/03-design/modules/agents.md` 工具目录一节）：
 
 ```
 <skill-key>/
@@ -16,4 +16,4 @@
 - **不允许任何可执行文件**：CI（`tools/validate-seeds`）拒绝 `scripts/` 与可执行扩展名；导入外部包时脚本只作惰性文本保存，永不执行。
 - `child-safety` 是系统技能（迁移已建技能行，不能停用），所有面向孩子的角色必须挂载。
 
-儿童技能（`child-safety`、`english-practice`、`storytelling`、`question-answer`）每次修改都由 `tools/safety-eval` 跑儿童安全测试集。目录尚为空：内容随 W5–6 实现一起提交。
+儿童技能（`child-safety`、`english-practice`、`storytelling`、`question-answer`、`word-explain`）每次修改都由 `tools/safety-eval` 跑儿童安全测试集。目录尚为空：内容随 W5–6 实现一起提交。

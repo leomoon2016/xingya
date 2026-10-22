@@ -2,17 +2,18 @@
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../../README.md)）。
 > 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../../06-releases/v1.0/changes.md)）：整批提交改为作答（plays）三步：开始（只下发可见部分）→ 逐题作答（服务端判分反馈）→ 完成（一次结算，含碎片、伙伴经验、藏匿点）。
+> 2026-10-22 单词本（用户决定，[ADR 0019](../../adr/0019-wordbook-as-old-system.md)）：照旧系统实现，新增 5 张表与 `/wordbook/*` 端点，见下方“单词本”。
 > 2026-10-21 单元层（[ADR 0016](../../adr/0016-unit-layer.md)）：路线图按单元分组；单元在课程内、关卡在单元内顺序解锁；进度键改为 `(course_id, unit_key, level_key)`；新增 `unit_progress`。
 
 ## 职责
 
-课程路线图（单元 > 关卡）与解锁、单元进度、作答、最佳星级、义项与错题的间隔复习、连续学习天数。
+课程路线图（单元 > 关卡）与解锁、单元进度、作答、最佳星级、义项与错题的间隔复习、连续学习天数、单词本（ADR 0019）。
 
 ## 拥有的表
 
-plays, level_progress, unit_progress, attempts, review_items, review_sessions
+plays, level_progress, unit_progress, attempts, review_items, review_sessions；单词本：word_identities, word_entries, word_book_progress, word_tasks, word_random_draws
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)。
 
 ## 边界
 
@@ -106,6 +107,39 @@ sequenceDiagram
 复习作答相同：`POST /review/plays` 开始，同样的 `answers` 与 `finish`；完成时写 `review_sessions`（`play_id` 唯一）、更新盒与到期日；对每个答对的条目 `creditInTx(point, review_correct, 100, review_correct:{date}:{reviewItemId})`（已存在则跳过；当天该 kind 合计达到 30 积分后不再写，在积分余额行锁内计数）；“今日完成”时只发 `fragment review_day 2`。复习不发星星、不加伙伴经验（ADR 0017）。
 
 听发音：`POST /plays/:id/listen {target}` → BEGIN；`lockBalancesInTx(child, [point])`；`plays FOR UPDATE`；`status = 'finished'` → `409 PLAY_FINISHED`；`target` 必须能在 `plays.items` 中找到且带音频（否则 400）；`creditInTx(point, level_listen, 10, listen:{playId}:{target})`，重复返回 `{awarded:false}`；COMMIT。不经幂等表（`source_key` 已保证只发一次）。
+
+## 单词本（ADR 0019）
+
+```ts
+listWords(child, {q, status, cursor}): WordPage                // 考试中只返回词形
+createWord / updateWord(child, input & {version}) / deleteWord(child, id, version)
+explainWord(child, word): WordExplanation                      // 调 studio.runChildSkill('word-explain')；不写库
+listenWord(child, {text, source, entryId?, taskId?}): ListenResult
+startWordTask(child, {mode, entryIds?, sound}, requestId): WordTaskView
+answerWordTask / advanceWordTask / finishWordTask / abandonWordTask
+reconcileWordRewards(child): SpotView[]
+isWordExamActive(child): boolean                               // chat 与 explain 在调用模型前检查
+```
+
+- **归一化与词身份**：`normalize = NFKC → trim → 合并空白 → toLowerCase`；新增或改单词时 `INSERT IGNORE word_identities(child, normalized)` 取得身份，再写 `word_entries`。重复会被 `uq_word_entries_child` 拦下（返回 `409 WORD_DUPLICATE`）。条数上限在 `word_book_progress` 行锁内用 `COUNT(*)` 检查。
+- **文字过滤**：每个文本字段先过 `chat.filterChildText`（与呀哈哈队长的输入过滤共用同一个函数与词表）；个人信息规则命中 → `400 TEXT_BLOCKED`。
+- **开始**（一个事务）：
+  1. 锁定 `word_book_progress`，没有这一行就先插入。
+  2. 检查没有进行中的一轮（生成列唯一键兜底）。
+  3. 选词，用 `crypto.randomInt` 出题；干扰项来自自己的词条和 `content.sensesForOpenCourses(child)`。
+  4. 快照写入 `snapshot`，包括题目、答案、`settings.probabilityBps` 与 `grade`。闯关时把跟随伙伴等级写入 `companion_level`。
+  5. 返回可见部分。
+- **作答**：`word_tasks FOR UPDATE`，然后检查 `expectedRevision`。学习和闯关模式只能答当前题，每题只记一次（再答 → 409），返回对错与解释，再用 `advance` 进入下一题。考试模式可以答任意题，交卷前可以修改答案，与旧系统一致（`server/wordbook-study/tasks.mjs`）。
+- **结算**（锁顺序：幂等行 → `balances` star → fragment → point → `word_tasks` → `word_book_progress` → `word_identities` 按 id 升序 → `hiding_spots`；与 nfr §4.5.2 一致）：
+  1. 判分。
+  2. 按词更新状态与 `first_passed_at`。
+  3. 闯关或考试：`best = max(best, tier)`，新增单位加余量；`floor/5` 颗星写入 `stars.creditInTx(star, word_{mode}, n, word:{taskId})`，余数写回。
+  4. 闯关得星时写入 `pet_bonus`，`source_key = petbonus:word:{taskId}`。
+  5. 里程碑：`floor(首次学会数 / 5)` 与已放置的里程碑藏匿点比较，逐个调用 `discovery.placeWordSpotInTx({milestoneNo})`。
+  6. 随机：得分 ≥ 80% 且模式不是学习时，先插入本轮每个词的 `word_random_draws`；遇到重复则本轮不判定。然后依次检查开关 → 当天单词本随机次数 < `daily_limit` → 抽签（`randomInt(10000) < probabilityBps`），中签后调用 `discovery.placeWordSpotInTx({wordTaskId})`。
+  7. 写入 `result`，状态改为 `completed`。
+- **听发音**：锁定 `balances(child, point)`，校验 `text` 属于该词条的发音目标，或属于进行中的一轮（考试除外）的题目和选项；然后检查当天 10 积分上限和 5 秒冷却，写入 `word:{date}:{sha256(normalized)}`，重复时返回 `{awarded:false}`。
+- 依赖：stars（发星、积分）、companion（等级快照）、discovery（`placeWordSpotInTx`）、studio（`runChildSkill`）、chat（文字过滤）、content（干扰项义项与词库音频地址）。
 
 ## 端点
 

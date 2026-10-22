@@ -52,8 +52,12 @@
 | 400 | `SKILL_IMPORT_REJECTED` | 导入包不合规：超限、路径穿越、符号链接、未知工具名、模式无法编译（`details.errors[]`） |
 | 409 | `RULE_INVALID` | 投放规则不合法（`details.errors[]`）；数据库 CHECK 兜底 |
 | 400 | `PROMPT_BLOCKED` | 描述命中提示词禁止词表（`details.terms`） |
+| 400 | `TEXT_BLOCKED` | 单词本文字命中个人信息过滤（`details.field`；ADR 0019） |
 | 409 | `INSUFFICIENT_STARS` / `PRICE_CHANGED` / `ALREADY_OWNED` | 星星不足 / 价格已变（`details.currentPrice`）/ 已拥有 |
 | 409 | `INSUFFICIENT_POINTS` | 换星时积分不足 |
+| 409 | `WORD_DUPLICATE` / `WORDBOOK_FULL` | 单词本已有这个词（`details.entryId`）/ 已满 2000 条 |
+| 409 | `WORD_TASK_ACTIVE` / `WORD_TASK_FINISHED` / `WORD_NO_ELIGIBLE` | 已有进行中的一轮（`details.taskId`）/ 这一轮已结束 / 没有可出题的词（`details.excluded[]`） |
+| 409 | `WORD_EXAM_LOCKED` / `WORD_EXAM_AI_RESTRICTED` | 考试中不能编辑或生成解释 / 考试中呀哈哈队长暂不开放（交卷或退出后恢复） |
 | 409 | `ALREADY_DECIDED` / `PENDING_LIMIT` | 审批已处理 / 待审批已达 3 个 |
 | 409 | `GIFT_DAILY_LIMIT` / `MESSAGE_DAILY_LIMIT` | 当日赠送 20 颗 / 消息 50 条已满 |
 | 409 | `EMAIL_IN_USE` / `USERNAME_IN_USE` / `NICKNAME_IN_USE` | 唯一性冲突 |
@@ -107,6 +111,25 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | POST /review/plays | K | 开始复习作答（≤ 剩余额度）；作答与完成用上面两个 `/plays/:playId/*` 端点 |
 | GET /me/streak | K | 连续天数 |
 | GET /children/:id/progress | P | 孩子各课程、各单元进度（已通过关卡数 / 关卡数、3 星级关卡数、完成日期、全 3 星级日期） |
+
+**learning · 单词本**（[ADR 0019](../adr/0019-wordbook-as-old-system.md)；全部只限会话孩子本人）
+
+| 方法 路径 | 主体 | 说明 |
+| --- | --- | --- |
+| GET /wordbook?q=&status=&cursor= | K | 词条列表（最近更新在前，每页 20 条）与学习状态；考试中只返回词形 `{id, word, examLocked: true}` |
+| GET /wordbook/summary | K | 词条数、可出题数、各状态数、首次学会数与里程碑进度（x / 5）、待领取里程碑数、两种模式余量（x / 5）、进行中的一轮 |
+| POST /wordbook/entries | K | 新增 `{word, meaningZh?, meaningEn?, phrases?, examples?, note?, familiar?, explanationSource?}`（幂等）；重复 → `409 WORD_DUPLICATE`；满 → `409 WORDBOOK_FULL` |
+| PATCH /wordbook/entries/:id | K | 修改（带 `version`）；改单词时重新归一化并换词身份 |
+| DELETE /wordbook/entries/:id | K | 硬删除词条（带 `version`），词身份保留 |
+| POST /wordbook/explain | K | AI 解释预览 `{word}` → `{meaningZh, meaningEn, phrases[], examples[]}`；不写库；计入聊天次数与 AI 预算 |
+| POST /wordbook/listen | K | 听发音积分 `{text, source: entry\|task, entryId?, taskId?}` → `{awarded, pointsDelta, points, todayUnits, nextAt?}`；规则见 ADR 0017 |
+| POST /wordbook/tasks | K | 开始一轮 `{mode: study\|challenge\|exam, entryIds?(1–50), sound}`（幂等）→ 题目可见部分（不含答案）、`excluded[]` |
+| GET /wordbook/tasks/current | K | 进行中的一轮（用于恢复；考试题只含孩子自己的作答，不含对错） |
+| POST /wordbook/tasks/:id/answers | K | 作答 `{questionId, value, expectedRevision}`；学习 / 闯关只能答当前题且只记一次，返回对错与解释；考试可答任意题、交卷前可改，只返回已保存 |
+| POST /wordbook/tasks/:id/advance | K | 学习 / 闯关：学习卡下一页、进入小测或下一题（当前题已答才可）`{expectedRevision}`；考试不用（可跳题） |
+| POST /wordbook/tasks/:id/finish | K | 交卷 / 结算（幂等）→ 得分、每个词的状态、单词星、余量、伙伴附赠积分、藏匿点（`spotId`，在结算页点开） |
+| POST /wordbook/tasks/:id/abandon | K | 退出本轮（不发奖励） |
+| POST /wordbook/rewards/reconcile | K | 补发待领取的里程碑藏匿点（幂等），返回新放置的藏匿点 |
 
 **stars**
 
@@ -252,6 +275,7 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | POST /admin/reports/:id/resolve | A | `dismiss` / `hide_message` / `disable_cross_family` / `suspend_family` |
 | GET /admin/anomalies | A | 对账不一致（星星、碎片、款式放置数）、发送失败邮件、进程内 5xx 计数、AI 任务失败、预算 ≥ 80%（全站与各角色）、备份状态 |
 | GET · PUT /admin/settings | A | 系统设置（`ai.*`、`registration.mode`、`companion.*`、`studio.*`、`learning.play_ttl_minutes`、`content.allow_self_review`、`agents.limits`、`agents.page_routes`、`agents.stats_min_group`；乐观锁；`discovery.*` 在工作室页面） |
+| GET · PUT /admin/wordbook/random | A | 单词本随机呀哈哈 `{enabled, probabilityBps 0–10000, dailyLimit 0–100, reason, expectedVersion}`；必须填写原因，写审计日志（ADR 0019） |
 | POST /admin/signup-codes | A | 签发一次性注册码（14 天有效，仅显示一次；可选填邮箱，同时发送注册邀请邮件） |
 | POST /admin/families/:id/suspend · /reactivate | A | 停用/恢复家庭 |
 | GET /health | 公开 | `{ok, version}`（不含敏感信息） |
@@ -265,8 +289,9 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 | 邀请/停用家长 | 本 ✓ | — | — |
 | 添加/修改/归档孩子、设 PIN 与密码、解锁 | 本 ✓ | — | — |
 | 标记/撤销家庭设备、查看设备与远程下线 | 本 ✓ | — | — |
-| 闯关、复习、听发音积分、换星、点开藏匿点、领养伙伴、扩建营地、购买、穿戴、申请兑换、赠送 | — | 本人 ✓ | — |
+| 闯关、复习、单词本（词条、学习 / 闯关 / 考试、AI 解释）、听发音积分、换星、点开藏匿点、领养伙伴、扩建营地、购买、穿戴、申请兑换、赠送 | — | 本人 ✓ | — |
 | 查看孩子进度、流水、报告、伙伴、图鉴 | 本 ✓ | 本人（自己的进度、流水、伙伴、图鉴） | — |
+| 查看单词本词条 | —（与旧系统一致；流水与图鉴里能看到单词本的结果） | 本人 ✓ | — |
 | 手动奖励星星 | 本 ✓ | — | — |
 | 维护奖励清单、审批兑换 | 本 ✓ | — | — |
 | 设置时长/时段/呀哈哈队长额度/课程开放/退出排行、加时 | 本 ✓ | — | — |

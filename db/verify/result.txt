@@ -1,5 +1,5 @@
-PASS  从空库应用两次结构指纹一致  — 4dba83062c23 / 4dba83062c23
-PASS  表数=67  — {"tables":67,"fks":149,"checks":181,"uniques":71,"generated":12}
+PASS  从空库应用两次结构指纹一致  — 33f64c12cbf9 / 33f64c12cbf9
+PASS  表数=72  — {"tables":72,"fks":158,"checks":196,"uniques":78,"generated":13}
 PASS  授权全覆盖：每张表都有应用角色授权  — []
 PASS  xingya 账号只有 @localhost（角色除外）  — [{"user":"xingya_app_role","host":"%"},{"user":"xingya_migrator_role","host":"%"},{"user":"xingya_app","host":"localhost"},{"user":"xingya_migrator","host":"localhost"}]
 PASS  migrator 可执行 DDL
@@ -49,7 +49,7 @@ PASS  不可变：app 不能修改已发布单元  — ER_TABLEACCESS_DENIED_ERR
 PASS  不可变：app 不能删除已发布单元  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'units'
 PASS  CHECK：题目可见部分不得含答案字段  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_questions_visible' is violated.
 PASS  CHECK：read_aloud 不能计分  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_questions_scored' is violated.
-PASS  题目表不含答案/解析列（答案在 question_answers）  — id,level_id,question_key,scored,sense_id,seq,type,visible
+PASS  题目表不含答案/解析列（答案在 question_answers）  — id,level_id,question_key,seq,type,scored,sense_id,visible
 PASS  不可变：app 不能修改已发布题目  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'questions'
 PASS  不可变：app 不能修改已发布答案  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'question_answers'
 PASS  不可变：app 不能修改已发布关卡  — ER_TABLEACCESS_DENIED_ERROR: UPDATE command denied to user 'xingya_app'@'localhost' for table 'levels'
@@ -106,7 +106,7 @@ PASS  积分：关内听发音 +0.1、单词本听发音 +0.1、复习答对 +1�
 PASS  幂等：同一作答同一发音目标只得一次积分  — ER_DUP_ENTRY: Duplicate entry '1-point-listen:7:q1:prompt' for key 'ledger.uq_ledger_source'
 PASS  幂等：同一复习条目同一天只得一次积分  — ER_DUP_ENTRY: Duplicate entry '1-point-review_correct:2026-10-21:5' for key 'ledger.uq_ledger_source'
 PASS  CHECK：听发音每次固定 0.1 积分  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
-PASS  CHECK：伙伴附赠最多 3 星 × 1.00  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  CHECK：伙伴附赠每星至少 0.10（1 星 × 0.10 = 10 单位）  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
 PASS  CHECK：积分不能由家长奖励  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  CHECK：积分不能直接购买装扮  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
 PASS  CHECK：星星不能记为听发音来源  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
@@ -156,6 +156,47 @@ PASS  复合外键：图鉴款式必须等于藏匿点中放置的款式  — ER
 PASS  UNIQUE：同一藏匿点只能进一次图鉴  — ER_DUP_ENTRY: Duplicate entry '1' for key 'yahaha_finds.uq_yahaha_finds_spot'
 PASS  幂等：同一藏匿点碎片只发一次  — ER_DUP_ENTRY: Duplicate entry '1-fragment-discovery:spot:1' for key 'ledger.uq_ledger_source'
 PASS  权限：app 不能删除图鉴  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'yahaha_finds'
+PASS  单词本：词身份与词条（孩子 1：apple）
+PASS  UNIQUE：同一孩子同一个词只能有一条词条  — ER_DUP_ENTRY: Duplicate entry '1-apple' for key 'word_entries.uq_word_entries_child'
+PASS  复合外键：词条的词身份必须属于同一孩子  — ER_NO_REFERENCED_ROW_2: Cannot add or update a child row: a foreign key constraint fails (`xingya`.`word_entries`,
+PASS  CHECK：短语最多 10 条  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_entries_lists' is violated.
+PASS  CHECK：单词不能超过 80 字符  — ER_DATA_TOO_LONG: Data too long for column 'word' at row 1
+PASS  词身份按二进制比较：café 与 cafe 是两个词
+PASS  CHECK：词身份必须是归一化小写  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_identities_norm' is violated.
+PASS  CHECK：闯关最高进度 0–3  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_identities_best' is violated.
+PASS  CHECK：未学习的词没有首次学会时间  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_identities_passed' is violated.
+PASS  首次学会：状态改为已掌握并记录时间
+PASS  删除词条（词身份保留）
+PASS  删除词条后学习状态与最高进度保留  — {"status":"mastered","b":3}
+PASS  权限：app 不能删除词身份  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'word_identities'
+PASS  CHECK：模式星星余量 0–4  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_book_progress_units' is violated.
+PASS  星星余量行
+PASS  开始单词闯关（记录跟随伙伴等级）
+PASS  UNIQUE：同一孩子同时只有一轮单词学习进行中  — ER_DUP_ENTRY: Duplicate entry '1' for key 'word_tasks.uq_word_tasks_active'
+PASS  结算后可开始下一轮
+PASS  CHECK：完成必须同时有结果与完成时间  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_tasks_done' is violated.
+PASS  CHECK：只有学习模式有学习卡阶段  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_tasks_study' is violated.
+PASS  CHECK：只有闯关记录跟随伙伴等级  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_tasks_companion' is violated.
+PASS  CHECK：每轮最多 50 个词  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_word_tasks_counts' is violated.
+PASS  UNIQUE：同一请求 ID 只开始一轮  — ER_DUP_ENTRY: Duplicate entry '1-00000000-0000-4000-8000-000000000061' for key 'word_tasks.uq_word_tasks
+PASS  随机判定记录
+PASS  UNIQUE：同日同模式同一个词只判定一次  — ER_DUP_ENTRY: Duplicate entry '1-2026-10-23-challenge-1' for key 'word_random_draws.PRIMARY'
+PASS  权限：app 不能删除随机判定记录  — ER_TABLEACCESS_DENIED_ERROR: DELETE command denied to user 'xingya_app'@'localhost' for table 'word_random_draws'
+PASS  单词闯关进步星 +3（奖励星）与伙伴附赠积分
+PASS  CHECK：单词闯关单次最多 30 星  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  CHECK：单词考试单次最多 20 星  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  CHECK：单词星只发星星  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_currency_kind' is violated.
+PASS  CHECK：伙伴附赠积分最多 30 星 × 1.00  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_ledger_ranges' is violated.
+PASS  单词星是奖励星（不计学习星）  — {"c":0}
+PASS  单词闯关 ≥80 分中签：放置 1 个有呀哈哈的藏匿点
+PASS  CHECK：单词本来源只放有呀哈哈的藏匿点  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_hiding_spots_word' is violated.
+PASS  CHECK：单词本来源只有 1 号藏匿点  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_hiding_spots_word' is violated.
+PASS  CHECK：藏匿点只能有一个来源  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_hiding_spots_source' is violated.
+PASS  单词本里程碑：每首次学会 5 个词必得 1 个
+PASS  UNIQUE：同一里程碑只放置一次  — ER_DUP_ENTRY: Duplicate entry '1-1' for key 'hiding_spots.uq_hiding_spots_word_milestone'
+PASS  UNIQUE：同一单词任务只放置一次  — ER_DUP_ENTRY: Duplicate entry '1-1' for key 'hiding_spots.uq_hiding_spots_word_task'
+PASS  单词本随机默认：开启、2000 基点、每日 2 个（旧系统）  — {"enabled":true,"daily_limit":2,"probability_bps":2000}
+PASS  CHECK：单词本随机概率 0–10000 基点  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_wordbook_random' is violated.
 PASS  合法的限时活动规则（概率 50%）
 PASS  CHECK：概率不得低于 1%  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_probability' is violated.
 PASS  CHECK：概率不得高于 100%  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_drop_rules_probability' is violated.
@@ -257,5 +298,5 @@ PASS  CHECK：工具循环上限设置不超过 20 步  — ER_CHECK_CONSTRAINT_
 PASS  CHECK：运营分析最小分组 3–50  — ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'ck_system_settings_stats_group' is violated.
 PASS  角色本身为锁定账号（不可登录）
 
-结构统计: {"tables":67,"fks":149,"checks":181,"uniques":71,"generated":12}
-合计 258 项，通过 258，失败 0
+结构统计: {"tables":72,"fks":158,"checks":196,"uniques":78,"generated":13}
+合计 299 项，通过 299，失败 0

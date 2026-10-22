@@ -10,7 +10,7 @@
 
 ai_jobs, ai_budget_months, assets, materials，以及 Skill 与 AI 角色的 10 张表（skills, skill_versions, skill_allowed_agents, agents, agent_versions, agent_skills, agent_budget_months, agent_runs, agent_run_steps, quick_tasks；见 [agents.md](agents.md)），共 14 张
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)。
 
 ## 边界
 

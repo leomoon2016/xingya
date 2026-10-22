@@ -31,6 +31,7 @@ GRANT SELECT, INSERT ON xingya.review_sessions  TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.gifts            TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.audit_events     TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.yahaha_finds     TO 'xingya_app_role';
+GRANT SELECT, INSERT ON xingya.word_random_draws TO 'xingya_app_role';  -- 单词本随机判定记录
 GRANT SELECT, INSERT ON xingya.course_versions  TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.units            TO 'xingya_app_role';   -- 单元随课程版本只追加
 GRANT SELECT, INSERT ON xingya.levels           TO 'xingya_app_role';
@@ -56,6 +57,9 @@ GRANT SELECT, INSERT, UPDATE ON xingya.course_drafts      TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.level_progress     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.unit_progress      TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.review_items       TO 'xingya_app_role';
+GRANT SELECT, INSERT, UPDATE ON xingya.word_identities    TO 'xingya_app_role';   -- 词身份不可删：删除词条后学习状态与奖励进度保留
+GRANT SELECT, INSERT, UPDATE ON xingya.word_book_progress TO 'xingya_app_role';
+GRANT SELECT, INSERT, UPDATE ON xingya.word_tasks         TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.balances           TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.shop_items         TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.child_items        TO 'xingya_app_role';
@@ -105,6 +109,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.email_outbox         TO 'xingya_a
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.course_overrides     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.blocks               TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.plays                TO 'xingya_app_role';
+GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.word_entries         TO 'xingya_app_role';   -- 单词本词条可删除（词身份保留）
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.materials            TO 'xingya_app_role';
 
 CREATE USER IF NOT EXISTS 'xingya_app'@'localhost'      ACCOUNT LOCK;

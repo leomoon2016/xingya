@@ -12,7 +12,7 @@
 
 words, word_senses, courses, course_versions, course_drafts, units, levels, questions, question_answers
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)；文档结构、题型两部分、K 规则与发布流程见 [课程模型](../course-model.md)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)；文档结构、题型两部分、K 规则与发布流程见 [课程模型](../course-model.md)。
 
 ## 边界
 

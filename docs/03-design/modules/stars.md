@@ -11,7 +11,7 @@
 
 ledger, balances, shop_items, child_items, reward_options, redemptions
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单67-张)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)。
 
 ## 边界
 
@@ -47,7 +47,7 @@ verifyBalances(): Mismatch[]                         // 夜间对账（三个币
 - `creditInTx`/`debitInTx` 在 `balances(child_id, currency)` 行锁内计算 `balance_after`；同一事务涉及多个币种时按 `star` → `fragment` → `point` 加锁。
 - 积分的每日上限（复习 30、单词本 10）与单词本 5 秒冷却在 `balances(child, point)` 行锁内按当天流水计数判断（与旧系统同为服务端判断，不另建表）；每个目标只发一次由 `source_key` 唯一键保证。
 - 换星：一个事务内先锁 `star` 再锁 `point`，写 `point point_convert −stars×1000` 与 `star point_convert +stars`，两行 `source_key` 都是 `convert:{请求 ID}`；外层幂等表保证重放返回第一次结果。`source_key` 冲突返回 `'duplicate'`（调用方据此跳过，例如“同一关当天已发过碎片”）。
-- 碎片的 kind 只允许 `level_pass`、`review_day`、`discovery`（入）与 `pet_adopt`（出）；积分只允许 `level_listen`、`word_listen`、`review_correct`、`pet_bonus`（入）与 `point_convert`（出）；星星不再有 `review_day`。均由数据库 CHECK 保证；接口层也拒绝其他组合。
+- 碎片的 kind 只允许 `level_pass`、`review_day`、`discovery`（入）与 `pet_adopt`（出）；积分只允许 `level_listen`、`word_listen`、`review_correct`、`pet_bonus`（入）与 `point_convert`（出）；星星新增 `word_challenge`（1–30）与 `word_exam`（1–20）两种奖励星（ADR 0019），`pet_bonus` 单次上限 3000 单位；星星不再有 `review_day`。均由数据库 CHECK 保证；接口层也拒绝其他组合。
 
 ## 时序：兑换（冻结 → 批准/拒绝）
 
