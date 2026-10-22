@@ -103,7 +103,7 @@
 | 账号 | 角色 | 权限 | 用途 |
 | --- | --- | --- | --- |
 | `xingya_app@localhost` | xingya_app_role | 按表（必要时按列）最小授权，见下表 | 服务进程（Unix socket） |
-| `xingya_migrator@localhost` | xingya_migrator_role | `ALL ON xingya.*`（无 GRANT OPTION） | 部署时迁移、示例课程与装扮导入、运维脚本（经 SSH） |
+| `xingya_migrator@localhost` | xingya_migrator_role | `ALL ON xingya.*`（无 GRANT OPTION） | 部署时迁移、示例课程、徽章与种子宠物导入、运维脚本（经 SSH） |
 | root | — | 全部 | 仅服务器本机 socket 认证，用于初始化与授权 |
 
 应用账号授权（`db/roles.sql`，每张表都有授权，验证脚本检查全覆盖）：

@@ -5,7 +5,7 @@
 
 ## 包含
 
-v1.0 包含 [01-requirements](../../01-requirements) 中十一个模块（family、studio、content、learning、stars、companion、discovery、social、chat、controls、reports）的全部需求，验收标准见 [PRD §1.4](../../01-requirements/PRD.md#14-成功标准上线验收)（S1–S12），首发内容范围见 [课程模型 §7.6](../../03-design/course-model.md#76-首发内容)，排期与削减顺序见 [里程碑 §11](../../02-solution/roadmap.md)（约 29.5 周）。
+v1.0 包含 [01-requirements](../../01-requirements) 中十一个模块（family、studio、content、learning、stars、companion、discovery、social、chat、controls、reports）的全部需求，验收标准见 [PRD §1.4](../../01-requirements/PRD.md#14-成功标准上线验收)（S1–S13），首发内容范围见 [课程模型 §7.6](../../03-design/course-model.md#76-首发内容)，排期与削减顺序见 [里程碑 §11](../../02-solution/roadmap.md)（约 29.5 周）。
 
 2026-10-21 设计变更（用户已批准，见 [changes.md](changes.md)）后，以下内容**纳入** v1.0：课程存数据库并版本化、后台编辑与审核发布；共享词库；课程资料上传与 AI 生成课程；伙伴（碎片作为第二种货币、领养、营地、成长）；呀哈哈发现（藏匿点、图鉴、投放规则、AI 一句话填写规则）；后台 AI 工作室（伙伴、呀哈哈家族、课程、规则）；发布时一次性生成发音与伙伴台词（含变调）；OSS + CDN 素材存储。
 
