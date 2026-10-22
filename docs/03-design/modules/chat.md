@@ -2,6 +2,7 @@
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../../README.md)）。
 
+> 2026-10-22 回归老系统（[ADR 0020](../../adr/0020-revert-to-old-system.md)、[ADR 0022](../../adr/0022-llm-vision-image-providers.md)）：孩子可在系统管理员标为“孩子可选”的聊天模型之间切换；⚠ 不恢复孩子自带模型地址与 Key（R5）。
 
 ## 职责
 
@@ -11,7 +12,7 @@
 
 ai_chat_usage
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)。`ai_chat_usage` 记录 `agent_version_id`（外键到 `agent_versions`，受众必须是 `child`）与 `cost_fen`。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单82-张)。`ai_chat_usage` 记录 `agent_version_id`（外键到 `agent_versions`，受众必须是 `child`）与 `cost_fen`。
 
 ## 边界
 
@@ -27,7 +28,8 @@ ai_chat_usage
 **chat**
 
 ```ts
-status(principal): {enabled, remainingToday}
+status(principal): {enabled, remainingToday, models: {id, name}[], currentModelId}   // models = 孩子可选的聊天模型
+selectModel(child, providerId)                        // 未标 child_selectable 或已停用 → 400 MODEL_NOT_SELECTABLE；选择存在会话孩子的偏好里
 chat(principal, {clientRequestId, messages[]}): {reply, filtered, remainingToday}
 usageForDay(familyId, childId, date): {messages, filterHits}
 purgeOldUsage(now)                                    // 90 天

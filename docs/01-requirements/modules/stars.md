@@ -74,7 +74,7 @@
 - 孩子按**份**申请（1–1000 份）→ 冻结 `份数 × 每份星价`；家长批准 → 扣除，并把 `份数 × 每份数量` 加进该奖励的**累计奖励余额**；拒绝 → 释放；孩子可撤回待审批申请 → 释放。每个孩子最多 3 个待审批申请。
 - 申请时做价格复核（`expectedPrice` = 每份星价）；申请单保存标题、单位、份数与每份星价快照，之后家长改价不影响已申请的单。
 - **累计奖励**：每个孩子每项奖励一个余额（`reward_balances`），流水只追加（`reward_ledger`：获批入账 / 孩子用掉 / 家长核销）。
-  - 孩子“用掉”：`POST /child/rewards/:optionId/uses {amount, note?}`，记一次使用，不需要审批（旧系统）；
+  - 孩子“用掉”：`POST /rewards/:optionId/uses {amount, note?}`，记一次使用，不需要审批（旧系统）；
   - 家长“核销”：`POST /children/:id/rewards/:optionId/writeoffs {amount, reason}`，必须写说明（≤ 300 字），用于“已经兑现了”的记录；
   - 余额不能为负（`409 REWARD_BALANCE_INSUFFICIENT`）；入账、用掉、核销都给对方发信箱通知。
 - 只能用星星兑换，碎片和积分不能兑换。

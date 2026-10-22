@@ -26,7 +26,7 @@
 1. `check`：lint、typecheck、模块边界检查、单元测试。
 2. `seeds`：`tools/validate-seeds` 校验 `seeds/`（模板、示例课程、装扮、短语、头像、安全词表、默认技能与角色挂载；不生成音频）；`tools/safety-eval` 在儿童技能或安全测试集变化时运行。
 3. `integration`：服务容器 `mysql:8.4`，应用全部迁移（从空库）→ 授权实测 → 集成测试。
-4. `e2e`：构建 web、admin 与服务，启动 MySQL、服务、LLM/图像/OCR 桩、Piper 桩、本地 OSS 目录与 SMTP 桩，运行 `apps/web/e2e` 与 `apps/admin/e2e`；检查 web 构建产物中不含后台代码（路由、组件名与 `/api/v1/admin` 字符串扫描）。
+4. `e2e`：构建 web、admin 与服务，启动 MySQL、服务、聊天 / 视觉 / 图像模型桩、Piper 桩、本地 OSS 目录与 SMTP 捕获器，运行 `apps/web/e2e` 与 `apps/admin/e2e`；检查 web 构建产物中不含后台代码（路由、组件名与 `/api/v1/admin` 字符串扫描）。
 5. `deploy`（仅 main，GitHub Environment 保护）：SSH（专用部署密钥，固定 known_hosts）上传发布包到 `/opt/xingya/releases/<ts-version>/`（`api/`、`web/`、`admin/`、`seeds/` 四个子目录）→ `xingya migrate`（migrator 账号，按版本号应用 `db/migrations` 中未应用的文件，校验已应用文件的 checksum）→ root 执行 `db/roles.sql`（幂等，补齐新表授权）→ `xingya seeds:apply`（migrator 账号，幂等：只插入 `seeds/` 中缺失的装扮、默认技能与角色挂载，从不修改或删除已有行）→ 切换 `/opt/xingya/current` 软链接 → `systemctl restart xingya` → 30 秒内 `/api/v1/health` 返回新版本，否则切回上一个软链接并重启、流水线失败。
 - 迁移只前进，并遵守“先扩展、后收缩”：任何迁移都必须与上一个发布的代码兼容，回滚只回代码不回库。
 - 部署**不导入任何课程**：课程、伙伴、呀哈哈家族款式在后台制作与发布，存在数据库与 OSS；发布新代码不影响已发布内容。`seeds:apply` 只补齐内置数据中缺失的行；`seeds/samples/` 示例课程只在运维手动执行 `xingya course:import` 时导入。模板、安全词表、短语、头像由 api 启动时从发布目录的 `seeds/` 读取，不入库。
@@ -58,3 +58,20 @@
 - 恢复手册：从 OSS 取最新加密备份 → 解密 → 在新库导入 → 指向并启动服务。上线前演练一次并记录用时（目标 RTO ≤ 2 小时）；之后每季度演练一次。
 
 > 服务器目录布局与“哪些内容上服务器”见 [overview.md](overview.md)。
+
+### 9.5 上线检查清单
+上线（对外提供服务）前逐项确认；未完成任何一项都不能上线。
+
+| # | 项目 | 说明 |
+| --- | --- | --- |
+| L1 | **选定域名并完成 ICP 备案** | 域名推迟到上线前选定（用户 2026-10-22）。备案需 **1–3 周**，最迟 W26 提交（[里程碑 §11](roadmap.md#11-里程碑单人开发约-295-周)）；主域名备案覆盖 `admin.` 与 `cdn.` 子域名，但 CDN 加速域名需单独在 CDN 控制台添加并通过审核 |
+| L2 | **DirectMail 发信域名** | 阿里云邮件推送**只接受已备案的域名**，所以必须在 L1 之后：添加发信域名（如 `mail.<备案域名>`）、配置 SPF / DKIM / DMARC 与 MX、创建发信地址 `noreply@…`、把 SMTP 用户名与密码写入 `/etc/xingya/secrets.env`（[ADR 0022](../adr/0022-llm-vision-image-providers.md)）；用 QQ 邮箱与 163 邮箱各收一封测试邮件，确认未进垃圾箱 |
+| L3 | TLS 证书 | 覆盖主域名、`admin.`、`cdn.`；到期告警生效 |
+| L4 | OSS 与 CDN | 私有桶、回源鉴权、`pub/` 缓存规则、RAM 子账号最小权限 |
+| L5 | 模型配置 | 三个默认模型（聊天 / 视觉 / 图像，阿里云百炼）的 Key 已在后台录入并“测试连接”通过；`XINGYA_MASTER_KEY` 已生成并离线备份；月度 AI 预算与角色预算已设置 |
+| L6 | 种子数据 | `xingya seeds:apply` 成功：默认技能与角色、徽章、短语、头像、游戏搭档、**24 种种子宠物**（`seeds/pets/`）；默认角色与技能经审核发布 |
+| L7 | 首发课程 | 首发课程（含旧英语课程导入结果）通过 K1–K13 并发布 |
+| L8 | 系统管理员 | 用 `xingya admin:create` 创建、TOTP 已绑定；`xingya admin:reset-totp` 演练一次 |
+| L9 | 备份与恢复 | 恢复演练已完成（RTO ≤ 2 小时） |
+| L10 | 验收 | S1–S13 全部通过（[v1.0 验收](../06-releases/v1.0/acceptance.md)） |
+| L11 | 替换素材预案 | 游戏搭档与种子宠物的原创替换图已准备好（[ADR 0018](../adr/0018-mario-game-partner.md)、[ADR 0021](../adr/0021-nintendo-pets-seed.md)），换图步骤写进运维手册 |

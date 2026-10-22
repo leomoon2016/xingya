@@ -8,7 +8,7 @@
 ## 拥有的表
 skills, skill_versions, skill_allowed_agents, agents, agent_versions, agent_skills, agent_budget_months, agent_runs, agent_run_steps, quick_tasks（共 10 张，属于 studio；studio 合计 14 张）
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)。要点：
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单82-张)。要点：
 
 | 保证 | 实现 |
 | --- | --- |

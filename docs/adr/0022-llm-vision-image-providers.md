@@ -49,7 +49,7 @@ studio 的 `AiClient` 按用途分三个接口：`chat(messages, tools?)`、`vis
 
 ### 6. 邮件：阿里云 DirectMail
 - 默认用阿里云邮件推送（DirectMail）SMTP（`smtpdm.aliyun.com:465`，TLS）；发信地址形如 `noreply@<备案域名>`，配置 SPF / DKIM / DMARC。SMTP 用户名与密码放 `secrets.env`，不入库、不进文档。
-- **DirectMail 需要已备案的域名**：域名推迟到上线前选定（用户 2026-10-22），因此在上线清单中列为前置条件（[deployment](../02-solution/deployment.md)）。开发与预发环境用本地 SMTP 捕获器，不真正发信。
+- **DirectMail 需要已备案的域名**：域名推迟到上线前选定（用户 2026-10-22），因此在上线清单中列为前置条件（[部署 §9.5](../02-solution/deployment.md#95-上线检查清单)）。开发与预发环境用本地 SMTP 捕获器，不真正发信。
 
 ## 后果
 - Q2、Q3、Q15 关闭；不再有“阿里云文字识别 OCR”这一外部依赖。

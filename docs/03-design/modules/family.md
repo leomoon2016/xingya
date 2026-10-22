@@ -2,14 +2,15 @@
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../../README.md)）。
 
+> 2026-10-22 用户决定：注册永久只用邀请码（没有注册模式设置）；注册码可绑定邮箱；系统管理员 5 次锁定 15 分钟、后台改密码、`admin:reset-totp`；孩子自改昵称与服务端偏好；任务单 17 的家长账号与家庭设置接口；信箱系统通知表 `notifications` 归 family（各模块都依赖 family，避免环）。旧孩子数据不迁移。
 
 ## 职责
 
-家庭（租户根）、家长与孩子账号、家庭设备与头像墙、PIN/密码登录、会话、邀请与找回密码、系统管理员账号、审计。
+家庭（租户根）、家长与孩子账号、家庭设备与头像墙、PIN/密码登录、会话、邀请与找回密码、系统管理员账号（登录锁定、改密码、TOTP 重置命令）、审计、信箱系统通知。
 
 ## 拥有的表
 
-families, parents, children, admin_accounts, family_devices, sessions, auth_tokens, audit_events
+families, parents, children, admin_accounts, family_devices, sessions, auth_tokens, audit_events, notifications（9 张）
 
 列与约束见 [数据模型 §6.1](../data-model.md)。
 
@@ -25,7 +26,7 @@ families, parents, children, admin_accounts, family_devices, sessions, auth_toke
 **family**
 
 ```ts
-registerFamily(cmd: {signupCode, email, password, displayName, familyName, timeZone}): {family, parent, session}
+registerFamily(cmd: {signupCode, email, password, displayName, familyName, timeZone}): {family, parent, session}   // 只凭注册码；码绑定邮箱时必须一致 → 403 SIGNUP_CODE_EMAIL_MISMATCH
 loginParent(email, password, ctx): Session            // 失败计数、锁定
 inviteParent(p, email): void                          // 发 invite_parent 令牌邮件
 acceptInvitation(token, password, displayName): Session
@@ -33,7 +34,10 @@ requestPasswordReset(email): void / resetPassword(token, newPassword): void / ve
 createChild(p, {nickname, avatarKey, grade, pin}): Child
 updateChild(p, childId, patch & {version}): Child      // 版本冲突 → VERSION_CONFLICT
 setChildPin(p, childId, pin) / setChildCredentials(p, childId, {username, password} | null)
-archiveChild(p, childId)
+archiveChild(p, childId) / restoreChild(p, childId)        // 任务单 17
+changePassword(p, {oldPassword, newPassword})             // 任务单 17；其他会话失效
+disableParent(p, parentId)                                // 任务单 17；最后一个有效家长 → LAST_PARENT
+updateChildSelf(child, {nickname?, currentCourseId?, prefSound?, prefReducedMotion?, version})   // 孩子“我的设置”；改昵称写审计
 markFamilyDevice(p, label): {deviceToken}             // 设置 xy_device Cookie
 listDeviceChildren(deviceToken): ChildCard[]          // 头像墙
 loginChildByPin(deviceToken, childId, pin): Session
@@ -44,6 +48,13 @@ getFamily(familyId) / getChild(familyId, childId) / listChildren(familyId)
 updateFamily(p, {name?, timeZone?, version}) / setCrossFamily(p, enabled, version) / rotateFriendCode(p)
 findFamilyByFriendCode(code): FamilyRef | null
 recordAudit(tx, event)
+notifyInTx(tx, {familyId, to: {childId} | {parentId}, kind, title, body, ref?})   // 信箱系统通知；被 stars、companion、social、controls 调用
+listNotifications(viewer, cursor) / markNotificationRead(viewer, id) / unreadCount(viewer)
+// 系统管理员
+loginAdmin(username, password, totp, ctx): Session      // 连续 5 次失败锁 15 分钟（failed_count、locked_until）
+changeAdminPassword(admin, {oldPassword, newPassword, totp})
+issueSignupCode(admin, {email?}): {code}                 // 填了邮箱即绑定（小写）
+// 运维命令：xingya admin:create、xingya admin:reset-totp <username>（重置后下次登录重新绑定）
 ```
 
 ## 端点

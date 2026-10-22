@@ -9,13 +9,13 @@
 
 | 档位（星 / 碎片） | 种类（`species_key` 名称） |
 | --- | --- |
-| 初级 20 / 80 | `sprout` 星芽小龙（30 / 100）、`panda` 熊猫（50 / 100）、`toad` 奇诺比奥、`goomba` 栗宝宝、`koopa` 慢慢龟、`shy_guy` 嘿呵 |
-| 中级 50 / 160 | `mario` 马里奥（50 / 100）、`yoshi` 耀西（40 / 100）、`luigi` 路易吉、`toadette` 奇诺比珂、`boo` 害羞幽灵、`piranha_plant` 吞食花 |
-| 高级 100 / 320 | `link` 林克（70 / 100）、`monster_chief` 怪物首领（60 / 100）、`daisy` 黛菊、`bowser_jr` 酷霸王Jr.、`wario` 瓦力欧、`waluigi` 瓦路易吉 |
-| 稀有 250 / 800 | `bowser` 酷霸王（60 / 100）、`king_hyrule` 海拉鲁国王（70 / 100）、`zelda` 塞尔达公主（80 / 100）、`peach` 碧姬、`donkey_kong` 咚奇刚 |
+| 初级 20 / 80 | `sprout` 星芽小龙（30 / 100）、`panda` 熊猫（50 / 100）、`toad` 奇诺比奥、`goomba` 栗宝宝、`koopa` 慢慢龟、`shy-guy` 嘿呵 |
+| 中级 50 / 160 | `mario` 马里奥（50 / 100）、`yoshi` 耀西（40 / 100）、`luigi` 路易吉、`toadette` 奇诺比珂、`boo` 害羞幽灵、`piranha-plant` 吞食花 |
+| 高级 100 / 320 | `link` 林克（70 / 100）、`monster-chief` 怪物首领（60 / 100）、`daisy` 黛菊、`bowser-jr` 酷霸王Jr.、`wario` 瓦力欧、`waluigi` 瓦路易吉 |
+| 稀有 250 / 800 | `bowser` 酷霸王（60 / 100）、`king-hyrule` 海拉鲁国王（70 / 100）、`zelda` 塞尔达公主（80 / 100）、`peach` 碧姬、`donkey-kong` 咚奇刚 |
 | 唯一 600 / 2000（全站同时一人） | `rosalina` 罗莎塔 |
 
-括号里是旧系统给该种类单独设的价格（其余跟随档位）。24 种中 22 种是任天堂角色，`sprout`、`panda` 是原创。旧素材：9 种是 SVG 文件（`public/assets/companions/` 下的 bowser、king_hyrule、link、mario、monster_chief、panda、sprout、yoshi、zelda），其余 15 种是 `MarioCharacters.jsx` 里的内联 JSX 图形；成长装扮叠加层在 `PetAvatar.jsx`（20 级围巾、50 级徽章、100 级光环）。
+括号里是旧系统给该种类单独设的价格（其余跟随档位）。旧系统的键 `shy_guy`、`piranha_plant`、`monster_chief`、`bowser_jr`、`king_hyrule`、`donkey_kong` 在新系统中改用连字符（数据库 `species_key` 只允许小写字母、数字与连字符），复制旧 SVG 时同时改名。24 种中 22 种是任天堂角色，`sprout`、`panda` 是原创。旧素材：9 种是 SVG 文件（`public/assets/companions/` 下的 bowser、king_hyrule、link、mario、monster_chief、panda、sprout、yoshi、zelda），其余 15 种是 `MarioCharacters.jsx` 里的内联 JSX 图形；成长装扮叠加层在 `PetAvatar.jsx`（20 级围巾、50 级徽章、100 级光环）。
 
 ## 决策
 1. **恢复旧宠物集**，名称、描述、档位、单独价格与开关照旧，与 AI 工作室设计的原创伙伴并存（同一张 `pet_species` 表，`origin = 'seed'` / `'studio'`）。

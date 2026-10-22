@@ -2,6 +2,7 @@
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../../README.md)）。
 
+> 2026-10-22 回归老系统（[ADR 0020](../../adr/0020-revert-to-old-system.md)）：开始秘密路线作答同样经过 `checkAccess(child, 'start')`；孩子自选课程只能在 `listOpenCourses` 之内。
 
 ## 职责
 
@@ -31,7 +32,7 @@ isCourseOpen(child, courseId): boolean / listOpenCourses(child): CourseId[]
 heartbeat(child): TimeStatus                           // 计时 + 返回是否锁定
 checkAccess(child, activity: 'start' | 'submit' | 'chat'): void   // 超限抛 TIME_LIMIT_REACHED / OUTSIDE_ALLOWED_HOURS
 grantExtraTime(p, childId): TimeStatus                 // +15 分钟
-getApprovalsInbox(p): {redemptions, friendRequests}   // 汇总 stars 与 social
+getApprovalsInbox(p): {redemptions, friendRequests}   // 汇总 stars 与 social（累计奖励核销不在收件箱，在孩子详情）
 usageForDay(familyId, childId, date): {seconds}
 ```
 

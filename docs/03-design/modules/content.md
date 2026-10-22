@@ -3,6 +3,7 @@
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../../README.md)）。
 > 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../../06-releases/v1.0/changes.md)）：从“内存中的只读课程包”改为数据库中的版本化课程 + 共享词库 + 草稿生命周期（[ADR 0008](../../adr/0008-db-versioned-courses-word-bank.md)）。
 > 2026-10-21 单元层（[ADR 0016](../../adr/0016-unit-layer.md)）：课程（一册）> 单元 > 关卡；版本仍以整门课程为单位，发布时写入全部单元。
+> 2026-10-22 回归老系统（[ADR 0020](../../adr/0020-revert-to-old-system.md)）：新增 `learning_cards`（关卡学习卡、单元拓展卡、字母卡、拼读卡）；第 10 种题型 `listen_pick_image`；1–2 年级禁拼写与阅读（K5）；答后显示与题目来源；关卡站点名与隐藏奖励（每单元 ≤ 2）；旧英语课程一次性导入。
 
 ## 职责
 
@@ -10,9 +11,9 @@
 
 ## 拥有的表
 
-words, word_senses, courses, course_versions, course_drafts, units, levels, questions, question_answers
+words, word_senses, courses, course_versions, course_drafts, units, levels, learning_cards, questions, question_answers（10 张）
 
-列与约束见 [数据模型 §6.1](../data-model.md#61-表清单72-张)；文档结构、题型两部分、K 规则与发布流程见 [课程模型](../course-model.md)。
+列与约束见 [数据模型 §6.1](../data-model.md#61-表清单82-张)；文档结构、题型两部分、K 规则与发布流程见 [课程模型](../course-model.md)。
 
 ## 边界
 
@@ -28,10 +29,12 @@ words, word_senses, courses, course_versions, course_drafts, units, levels, ques
 // 孩子端读取（只读已发布版本）
 currentVersion(courseId): CourseVersion | null
 listCourses(filter: {subject?, grade?}): CourseSummary[]          // 只含有当前版本且未退役的课程
-getLevel(versionId, levelId): LevelVisible & {unitKey}             // 关卡 + 题目可见部分（不含答案）
+getLevel(versionId, levelId): LevelVisible & {unitKey}             // 关卡（站点名、隐藏奖励类型只给 learning）+ 学习卡 + 题目可见部分（不含答案）
+unitExtensionCards(versionId, unitKey): Card[]                       // 单元拓展卡
+secretRouteQuestions(versionId, unitKey, route): QuestionVisible[]  // 单元第 1 / 2 / 3 关的前 3 道计分题
 courseOutline(versionId): {unitId, unitKey, seq, title, levels: {levelId, levelKey, seq}[]}[]   // 单元按 seq、单元内关卡按 seq
 unitLevelKeys(versionId, unitKey): LevelKey[]                       // 当前版本某单元的全部关卡（单元进度用）
-gradeInTx(tx, questionId, response): {correct, reveal: {answer, explanation}}  // 读 question_answers 判分
+gradeInTx(tx, questionId, response): {correct, reveal: {answer, explanation, revealText?, revealZh?, source?}}  // 读 question_answers 判分；答后显示原文与中文、题目来源
 levelSenses(levelId): SenseId[]                                     // 该关考查的义项
 pickDistractorSenses(senseId, n, seed): SenseId[]                  // 复习生成题：同学科同年级已发布义项，确定性
 spotDefinitions(levelId): {kind, x, y}[]                          // 3 个藏匿点
@@ -50,6 +53,7 @@ previewLevel(admin, draftId, unitKey, levelKey): LevelVisible               // �
 submitForReview(admin, draftId, version) / returnToDraft(admin, draftId, reason)
 publish(admin, draftId, version): JobId                            // 入队 publish_audio
 importSample(file): DraftId                                        // xingya course:import
+importLegacyCourses(dir): DraftId[]                                 // xingya legacy:import-courses：旧系统导出的英语课程 JSON → 草稿（只读文件，不连旧库）
 listTemplates(): Template[] / getTemplate(id, version)
 avatars() / phrases() / emojis() / safetyLists()
 ```

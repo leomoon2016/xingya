@@ -2,6 +2,7 @@
 
 > 本文由已确认的《星芽学园全新系统设计规格》（2026-10-21，提交 6b463ed）拆分而来；章节编号沿用原规格，便于交叉引用（编号与文件的对应见 [docs/README.md](../../README.md)）。
 
+> 2026-10-22 回归老系统（[ADR 0020](../../adr/0020-revert-to-old-system.md)）：家长中心增加学习全览与知识图谱（只读，数据来自 learning）；邮件默认 DirectMail（[ADR 0022](../../adr/0022-llm-vision-image-providers.md)）。
 
 ## 职责
 
@@ -27,10 +28,11 @@ daily_reports, email_outbox
 
 ```ts
 getDailyReports(p, childId, from, to) / getTodayLive(p, childId) / getWeekly(p, childId, isoWeek)   // 周报含各单元进度（learning.unitProgress）
+// 学习全览与知识图谱由 learning 提供（overviewForParent / knowledgeGraph），本模块只在家长中心页面里组合
 runNightlyAggregation(now)                             // 每 15 分钟调度，按家庭时区处理“昨天”
                                                        // 读取 learning/stars/discovery/chat/controls 的 statsForDay（含碎片收入、找到的呀哈哈家族成员、首次完成单元数 → daily_reports.units_completed）
 enqueueWeeklyReports(now)                              // 每 5 分钟调度，周日 20:00 后入队
-enqueueEmail(tx | db, {kind, dedupeKey, to, subject, html, text, familyId?, parentId?})
+enqueueEmail(tx | db, {kind, dedupeKey, to, subject, html, text, familyId?, parentId?})   // 发送走 DirectMail SMTP（ADR 0022），开发环境用捕获器
 sendDueEmails(now)                                     // 每 30 秒
 unsubscribe(signedToken)
 ```

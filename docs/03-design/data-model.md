@@ -10,7 +10,7 @@
 ### 6.1 表清单（82 张）
 | 模块 | 表 | 用途 | 关键列 / 约束 |
 | --- | --- | --- | --- |
-| family（8） | families | 家庭（租户根） | time_zone、cross_family_enabled（默认 0）、friend_code（唯一，开启时必填）、status、version |
+| family（8 + 1） | families | 家庭（租户根） | time_zone、cross_family_enabled（默认 0）、friend_code（唯一，开启时必填）、status、version |
 | | parents | 家长 | email（小写、全站唯一）、password_hash、email_verified_at、weekly_report_enabled、失败计数/锁定、`UNIQUE(family_id,id)` 供复合外键 |
 | | children | 孩子档案 | nickname（家庭内唯一，1–24 字，孩子可自改，旧系统）、avatar_key、grade 1–6、pin_hash、username/password_hash（同时有或同时无）、失败计数/锁定、pref_sound / pref_reduced_motion（偏好存服务端）、current_course_id（顶栏选中的课程，外键 → courses）、status |
 | | admin_accounts | 系统管理员 | username、password_hash、totp_secret_enc、failed_login_count ≤ 5 / locked_until（连续 5 次错误锁 15 分钟）、password_changed_at（后台改密码）、totp_reset_at（`xingya admin:reset-totp`）；应用账号只能改密码与锁定列，TOTP 种子只有 migrator 能改 |
@@ -18,6 +18,7 @@
 | | sessions | 会话 | token_hash、principal 与 parent/child/admin 互斥 CHECK、PIN 登录必须有家庭设备、expires_at、revoked_reason |
 | | auth_tokens | 一次性令牌 | purpose（verify_email / reset_password / invite_parent / family_signup）按用途约束字段形状；注册码（family_signup）发放时填了邮箱即绑定该邮箱（CHECK 小写），未填则不绑定 |
 | | audit_events | 审计（只追加） | actor、action、target（含 `drop_rule`、`course_draft`、`pet_species`、`yahaha_style`、`setting`）、detail JSON |
+| | notifications | 信箱系统通知（归 family：被 stars、companion、social、controls 共同写入，放在无依赖的 family 里避免模块环） | 收件人孩子或家长恰好一个、kind（兑换 / 核销 / 加减星 / 伙伴赠送与退订 / 营地扩建 / 系统）、title 1–60、body 1–500、read_at（只能更新这一列） |
 | studio（6 + 10） | ai_jobs | 后台任务队列 | kind、status、`running_slot` 1/2 唯一（最多 2 并发）、生成列 `local_slot` 唯一（本机进程最多 1 个）、estimated/actual 费用（实际 ≤ 预估）、budget_month、attempts ≤ 3、heartbeat_at |
 | | ai_budget_months | 月度 AI 预算 | PK budget_month、cap/reserved/spent（`reserved + spent ≤ cap`）、version |
 | | assets | 素材库 | kind（image/animation/audio）、visibility（draft/public）、oss_key 唯一（内容哈希）、bytes 上限按 kind、source、AI 图像必须有 prompt |
@@ -44,7 +45,7 @@
 | | learning_cards | 学习卡（只追加，旧系统） | unit_id + level_id（NULL = 单元拓展卡；复合外键：关卡属于该单元）、card_key / seq 1–50（同范围唯一，生成列 scope_key）、kind word/sentence/letter/phonics、sense_id、content JSON（字母卡例词 ≤ 50）；不计分、不进复习 |
 | | questions | 题目可见部分（只追加） | level_id、question_key、seq 1–8、type（含 `listen_pick_image`，旧系统）、scored（`read_aloud`=0）、sense_id、visible JSON（CHECK 拒绝答案字段）、source（题目来源，如“一年级上册 第 12 页”） |
 | | question_answers | 题目答案部分（只追加） | PK question_id、answer JSON、explanation、reveal JSON（答后显示：原文 / 中文 / 例句翻译，旧系统） |
-| learning（6 + 2） | plays | 作答 | kind level/review/secret（secret 带 secret_route）、course_version_id + level_id（复合外键：关卡属于该版本）、`UNIQUE(child_id, client_request_id)`、items（下发题目与选项顺序）、responses（每题第一次作答）、status open/finished/abandoned（**不过期**，再次开始即恢复，旧系统）、生成列 open_slot + `UNIQUE(child_id, open_slot)`（同一关 / 同一路线同时只有一次未完成作答）、companion_level（开始时跟随伙伴等级快照，1–100，伙伴附赠积分用） |
+| learning（6 + 5 + 2） | plays | 作答 | kind level/review/secret（secret 带 secret_route）、course_version_id + level_id（复合外键：关卡属于该版本）、`UNIQUE(child_id, client_request_id)`、items（下发题目与选项顺序）、responses（每题第一次作答）、status open/finished/abandoned（**不过期**，再次开始即恢复，旧系统）、生成列 open_slot + `UNIQUE(child_id, open_slot)`（同一关 / 同一路线同时只有一次未完成作答）、companion_level（开始时跟随伙伴等级快照，1–100，伙伴附赠积分用） |
 | | level_progress | 关卡最佳星级 | PK(child_id, course_id, unit_key, level_key)、best_stars 0–3、first_passed_at 与星级一致 |
 | | unit_progress | 单元进度 | PK(child_id, course_id, unit_key)、review_correct（单元复习累计答对，月亮秘境用）、level_count ≥ 1、levels_three_star ≤ levels_passed ≤ level_count、first_completed_at（下一单元解锁，之后不收回）、first_all_three_star_at（必须晚于完成；触发“单元首次全 3 星级通关”一次） |
 | | attempts | 闯关记录（只追加） | `UNIQUE(play_id)`、course_version_id + level_id、scored_count 4–8、生成列 accuracy_pct / stars（全对 3；只错 1 题且 ≥ 80% 为 2；其余 ≥ 80% 为 1；< 80% 为 0，用户 2026-10-22）/ passed、stars_awarded、answers JSON、activity_date |
@@ -77,10 +78,9 @@
 | | drop_rules | 投放规则 | rule_type campaign/course、status、source_text、spec JSON、trigger_type、effect、probability_pct 1–100、daily_cap 1–10、total_quantity/consumed（consumed ≤ total）、时间窗；类型与触发/效果组合、课程规则至少 1 个范围目标、范围 `spec.scope.targets[{courseId, unitKey?, levelKey?}]` 由 `JSON_SCHEMA_VALID` 校验（有 levelKey 必须有 unitKey、≤ 20 个、无未知字段）、“单元首次全 3 星级”不能指向关卡、“指定关卡通关”的目标都必须是关卡、限定款式必须列款式等 CHECK |
 | | hiding_spots | 藏匿点 | 来源恰好一个（CHECK）：attempt_id（通关，spot_no 1–3）/ word_task_id（单词本随机）/ word_milestone_no（单词本里程碑）/ unit_milestone_key（单元首次全 3 星级必得，`UNIQUE(child_id, unit_milestone_key)`，旧系统），非通关来源只有 1 号且必有款式；`UNIQUE(attempt_id, spot_no)`、`UNIQUE(word_task_id, spot_no)`、`UNIQUE(child_id, word_milestone_no)`、`UNIQUE(child_id, local_date, daily_seq)`（daily_seq 1–10，与 style_id 同时有或同时无）、rule_id、revealed_at（只能更新这一列） |
 | | yahaha_finds | 图鉴记录（只追加） | `UNIQUE(spot_id)`、复合外键 (spot_id, style_id) → 藏匿点里的款式、fragment_ledger_id 唯一 |
-| social（5 + 1） | family_friendships | 好友家庭 | low<high、生成列 live_key + 唯一键（每对家庭最多一条进行中/有效）、状态字段一致 |
+| social（5） | family_friendships | 好友家庭 | low<high、生成列 live_key + 唯一键（每对家庭最多一条进行中/有效）、状态字段一致 |
 | | gifts | 赠送（只追加） | amount 1–20、不能送自己、跨家庭必须关联好友关系、sender_date |
 | | messages | 消息 | 发送方/接收方各恰好一个、kind 与内容一致（家庭内信件 subject ≤ 60、body ≤ 500，不限每日条数，旧系统）、跨家庭只能 phrase/emoji 且只能孩子↔孩子、hidden_at |
-| | notifications | 信箱系统通知 | 收件人孩子或家长恰好一个、kind（兑换 / 核销 / 加减星 / 伙伴赠送与退订 / 营地扩建 / 系统）、title 1–60、body 1–500、read_at（只能更新这一列） |
 | | blocks | 屏蔽 | blocker 为孩子或整个家庭（生成列 blocker_key）、唯一 |
 | | abuse_reports | 举报 | 每家庭对同一消息只举报一次、处理状态一致 |
 | chat（1） | ai_chat_usage | 聊天元数据（90 天） | `UNIQUE(family_id, client_request_id)`、status、filter_category（过滤命中时必填）、不含文本；agent_version_id（外键 `(agent_version_id, agent_audience)` → agent_versions，CHECK `agent_audience = 'child'`）、cost_fen |

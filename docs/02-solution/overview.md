@@ -26,8 +26,8 @@ flowchart LR
   end
   CDN["阿里云 CDN（已备案子域名）"]
   OSS[("阿里云 OSS（私有桶）\ndraft/ materials/ pub/ 与加密备份")]
-  AI["外部 AI 提供方\nLLM / 图像 / OCR"]
-  SMTP["外部邮件服务（SMTP）"]
+  AI["外部 AI 提供方（默认阿里云百炼）\n聊天 / 视觉 / 图像模型"]
+  SMTP["阿里云 DirectMail（SMTP）"]
   GH["GitHub Actions：校验/测试/构建"]
   Ops["运维者电脑"]
 
@@ -55,9 +55,9 @@ flowchart LR
 | 前端 | React 19、Vite、React Router、TanStack Query、vite-plugin-pwa（Workbox）、CSS Modules | 两个前端应用：`apps/web`（孩子端与家长中心两个懒加载路由块，可安装 PWA）与 `apps/admin`（系统管理端，独立构建、独立子域名与 CSP，不做 PWA；ADR 0015），共享 `packages/ui` 主题；伙伴与呀哈哈家族动画用“关键帧图片 + 动效模板”客户端渲染（CSS/Web Animations） |
 | 服务端 | Node 24 LTS、TypeScript（strict）、Fastify 5、Zod（请求/响应/课程文档/AI 输出共用）、Kysely、mysql2、pino、nodemailer、阿里云 OSS SDK | 单进程；时间统一通过可注入的 `Clock` 获取（测试可控） |
 | 数据库 | MySQL 8.4 LTS、InnoDB、utf8mb4、REPEATABLE READ | 连接 `time_zone='+00:00'`；所有 DATETIME 存 UTC；任务队列也在 MySQL |
-| 文档抽取 | 在 worker 线程中抽取 PDF 文字层、docx、pptx 文本（`resourceLimits` 限制堆 128 MB、超时 60 秒；docx/pptx 解压总量 ≤ 100 MB、条目数 ≤ 2000，防压缩炸弹；不执行宏、不解析外部链接）；照片走云端 OCR 适配器 | 扫描版 PDF 首发不支持 |
+| 文档抽取 | 在 worker 线程中抽取 PDF 文字层、docx、pptx 文本（`resourceLimits` 限制堆 128 MB、超时 60 秒；docx/pptx 解压总量 ≤ 100 MB、条目数 ≤ 2000，防压缩炸弹；不执行宏、不解析外部链接）；照片与扫描版 PDF 的页面交给**视觉模型**识字（不用专门的 OCR 服务，ADR 0022） | 扫描版 PDF 逐页渲染成图片后识字，按页计费 |
 | 语音 | Piper（一次性进程，安装在服务器 `/opt/xingya/piper`）、ffmpeg（编码 MP3、变调） | 只在发布/设计任务中运行，无常驻语音服务 |
-| AI 提供方 | 适配器接口：LLM、图像、OCR（推荐见开放问题 Q15） | 生成结果必须通过 Zod 模式校验 |
+| AI 提供方 | 聊天 / 视觉 / 图像三个适配器（OpenAI 兼容接口 + 百炼异步图像接口），厂商、地址与模型在后台“模型配置”分别设置，默认阿里云百炼（[ADR 0022](../adr/0022-llm-vision-image-providers.md)）；邮件默认 DirectMail | 生成结果必须通过 Zod 模式校验；Key 加密存库 |
 | 存储与分发 | 阿里云 OSS + CDN | 素材按内容哈希命名，永久缓存 |
 | 测试 | Vitest（`apps/api/test/{unit,integration,concurrency,safety}`）、Playwright（`apps/web/e2e`、`apps/admin/e2e`）、`tools/safety-eval`（儿童安全评测） | 集成测试用 CI 中真实 MySQL 8.4；AI、OSS、Piper 用桩 |
 | 运维 | Nginx、systemd、GitHub Actions、ossutil、age（备份加密） | 无容器编排 |
@@ -365,14 +365,14 @@ xingya/
       api/                   # 服务编译产物 + db/migrations + db/roles.sql
       web/                   # 孩子端与家长中心构建产物（主域名）
       admin/                 # 系统管理端构建产物（admin.<域名>）
-      seeds/                 # 内置数据（模板、安全词表与守则、短语、头像、默认技能与角色、装扮、示例）
+      seeds/                 # 内置数据（模板、安全词表与守则、短语、头像、默认技能与角色、徽章、种子宠物、游戏搭档、示例）
   current -> releases/<ts-version>   # 当前版本；回滚 = 把软链接切回上一个发布并重启
   scripts/                   # 来自 deploy/scripts：bootstrap、deploy、rollback、backup、alerts
   piper/
     bin/                     # Piper 可执行文件（bootstrap 安装，校验 SHA-256）
     voices/                  # 声音模型 *.onnx + *.onnx.json（首发 zh_CN、en_US 各 1 个）
 /var/lib/xingya/tmp/         # 一次性进程的临时文件（任务结束即删）
-/etc/xingya/secrets.env      # 0600：数据库口令、会话 HMAC 密钥、TOTP 加密密钥、LLM/图像/OCR Key、OSS RAM 子账号 AccessKey、SMTP 凭据
+/etc/xingya/secrets.env      # 0600：数据库口令、会话 HMAC 密钥、TOTP 加密密钥、模型配置主密钥 XINGYA_MASTER_KEY（模型 Key 本身加密存在数据库）、OSS RAM 子账号 AccessKey、DirectMail SMTP 凭据
 /etc/nginx/                  # 来自 deploy/nginx
 /etc/systemd/system/         # 来自 deploy/systemd
 /var/backups/xingya/         # 每日数据库备份（14 份）与 backup-status.json
@@ -380,16 +380,16 @@ xingya/
 保留最近 3 个发布目录。
 
 ## 3.4 模块与边界规则
-11 个业务模块 + 平台层，各自拥有自己的表（共 72 张 = 69 业务 + 3 平台），只通过 `index.ts` 暴露函数：
+11 个业务模块 + 平台层，各自拥有自己的表（共 82 张 = 79 业务 + 3 平台），只通过 `index.ts` 暴露函数：
 
 | 模块 | 代码名 | 拥有的表 | 表数 |
 | --- | --- | --- | --- |
-| 家庭账号 | family | families, parents, children, admin_accounts, family_devices, sessions, auth_tokens, audit_events | 8 |
-| AI 工作室（含 Skill 与 AI 角色） | studio | ai_jobs, ai_budget_months, assets, materials；skills, skill_versions, skill_allowed_agents, agents, agent_versions, agent_skills, agent_budget_months, agent_runs, agent_run_steps, quick_tasks | 14 |
-| 课程内容 | content | words, word_senses, courses, course_versions, course_drafts, units, levels, questions, question_answers；内存中的模板、头像、短语/表情、安全词表 | 9 |
-| 学习 | learning | plays, level_progress, unit_progress, attempts, review_items, review_sessions | 6 |
-| 星星 | stars | ledger, balances, shop_items, child_items, reward_options, redemptions | 6 |
-| 伙伴 | companion | pet_tiers, pet_tier_stages, pet_species, pet_dens, child_pets | 5 |
+| 家庭账号 | family | families, parents, children, admin_accounts, family_devices, sessions, auth_tokens, audit_events, notifications（信箱系统通知，供各模块 `notifyInTx` 写入） | 9 |
+| AI 工作室（含 Skill 与 AI 角色） | studio | ai_jobs, ai_budget_months, assets, materials, material_upload_links, ai_providers；skills, skill_versions, skill_allowed_agents, agents, agent_versions, agent_skills, agent_budget_months, agent_runs, agent_run_steps, quick_tasks | 16 |
+| 课程内容 | content | words, word_senses, courses, course_versions, course_drafts, units, levels, learning_cards, questions, question_answers；内存中的模板、头像、短语/表情、安全词表 | 10 |
+| 学习 | learning | plays, level_progress, unit_progress, attempts, review_items, review_sessions；单词本 word_identities, word_entries, word_book_progress, word_tasks, word_random_draws；hidden_reward_claims, secret_routes | 13 |
+| 星星 | stars | ledger, balances, shop_items（探险徽章）, child_items, reward_options, redemptions, reward_balances, reward_ledger | 8 |
+| 伙伴 | companion | pet_tiers, pet_tier_stages, pet_species, pet_dens, child_pets, pet_interactions, pet_gifts | 7 |
 | 呀哈哈发现 | discovery | yahaha_sets, yahaha_styles, drop_rules, hiding_spots, yahaha_finds | 5 |
 | 社交 | social | family_friendships, gifts, messages, blocks, abuse_reports | 5 |
 | AI 聊天（呀哈哈队长） | chat | ai_chat_usage | 1 |
@@ -403,14 +403,14 @@ xingya/
 3. 跨模块写入在**同一事务**内完成：发起业务操作的模块开启事务，把 `tx` 传给其他模块以 `…InTx` 结尾的函数；被调用方从不自行提交。
 4. 模块依赖无环（A → B 表示 A 调用 B）：
    - learning → controls、stars、content、companion、discovery（完成结算时发星/碎片、加经验、放置藏匿点）、studio（注册呀哈哈队长的只读工具 `child.learned_words`）
-   - discovery → stars（碎片与奖励星）、content（课程/关卡范围校验）、studio（注册款式与规则草稿工具、发起角色任务）
-   - companion → stars（领养与扩建扣费、学习星累计）、studio（注册伙伴草稿工具、发起角色任务）
+   - discovery → stars（碎片）、content（课程/关卡范围校验）、studio（注册款式与规则草稿工具、发起角色任务）
+   - companion → stars（领养、扩建扣费与退订返还、学习星累计）、studio（注册伙伴草稿工具、发起角色任务）
    - content → studio（注册课程草稿工具、发起角色任务、发布音频系统任务、素材）
    - controls → content（课程列表），并只读调用 stars 与 social（审批收件箱）
-   - stars → studio（装扮图片素材只读）
-   - social → stars；chat → controls、studio（同步运行儿童角色呀哈哈队长、预算）；reports → 各模块的只读查询函数、studio（注册只读聚合工具 `stats.aggregate`）
-   - 所有模块 → family（读取家庭、孩子）
-   - studio、family 不依赖任何业务模块（studio 只依赖 platform）；stars 不再依赖 content（装扮表归 stars），只读依赖 studio 的素材。
+   - stars → studio（徽章图片素材只读）
+   - social → stars（赠星）、companion（赠送伙伴 `transferPetInTx`、星星伙伴列表的跟随伙伴）、discovery（星星伙伴列表的收藏数，只读）；chat → controls、studio（同步运行儿童角色呀哈哈队长、预算）；reports → 各模块的只读查询函数、studio（注册只读聚合工具 `stats.aggregate`）
+   - 所有模块 → family（读取家庭、孩子；写信箱系统通知 `family.notifyInTx`）
+   - studio、family 不依赖任何业务模块（studio 只依赖 platform）；stars 不再依赖 content（徽章表归 stars），只读依赖 studio 的素材。
 5. **工具注册（依赖倒置）**：content、companion、discovery、learning、reports 在启动时向 studio 注册 AI 角色可用的**内置工具**（`registerTool`：只读、写草稿或生成；没有发布类工具）；AI 流程全部由“AI 角色 + 技能”执行（ADR 0014）。确定性的系统任务仍用 `registerHandler`：`publish_audio`（content）、`material_extract`（studio）。studio 只负责技能与角色、执行器、排队、并发、预算、调用提供方与保存素材，工具把结果写回各自模块的表。
 
 ### content 与 studio 的分工
