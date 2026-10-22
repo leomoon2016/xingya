@@ -13,11 +13,12 @@
 -- 约定：
 --   * 业务表都带 family_id，并用 (family_id, child_id) 复合外键把行“钉”在同一家庭；
 --   * 外键一律 RESTRICT（不级联删除）；孩子/家长只停用不硬删；
---   * 只追加表（ledger、attempts、review_sessions、gifts、audit_events、yahaha_finds，
---     以及已发布课程版本 course_versions、units、levels、questions、question_answers）
+--   * 只追加表（ledger、attempts、review_sessions、gifts、audit_events、yahaha_finds、reward_ledger、
+--     hidden_reward_claims、pet_gifts、pet_interactions，
+--     以及已发布课程版本 course_versions、units、levels、questions、question_answers、learning_cards）
 --     对应用账号只授予 SELECT, INSERT（见 db/roles.sql），没有 UPDATE/DELETE；
 --   * 课程编辑只发生在 course_drafts；发布 = 在一个事务内插入新版本行 + 切换 courses.current_version_id。
--- 表数：72（业务 69 + 平台 3；2026-10-22 单词本 +5，ADR 0019）
+-- 表数：82（业务 79 + 平台 3；2026-10-22 单词本 +5，ADR 0019；同日“回归旧系统”+10，ADR 0020–0022）
 -- =====================================================================
 
 SET NAMES utf8mb4;
@@ -73,7 +74,7 @@ CREATE TABLE parents (
 CREATE TABLE children (
   id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   family_id          BIGINT UNSIGNED NOT NULL,
-  nickname           VARCHAR(20)  NOT NULL,
+  nickname           VARCHAR(24)  NOT NULL,                  -- 家长或孩子本人可改（旧系统规则，ADR 0020），保存前过滤个人信息
   avatar_key         VARCHAR(48)  NOT NULL,                  -- 仓库 seeds/avatars 中的头像键
   grade              TINYINT UNSIGNED NOT NULL,
   pin_hash           VARCHAR(255) NOT NULL,                  -- 4 位 PIN 的 scrypt 哈希
@@ -82,6 +83,9 @@ CREATE TABLE children (
   failed_login_count TINYINT UNSIGNED NOT NULL DEFAULT 0,    -- PIN 与密码共用
   locked_until       DATETIME(3)  NULL,
   status             ENUM('active','archived') NOT NULL DEFAULT 'active',
+  pref_sound         TINYINT(1)   NOT NULL DEFAULT 1,        -- 示范声音（旧系统存服务端，换设备保留）
+  pref_reduced_motion TINYINT(1)  NOT NULL DEFAULT 0,        -- 减少动画
+  current_course_id  VARCHAR(64)  NULL,                      -- 孩子在已开放课程之间自选的当前课程（顶栏年级/课程下拉）
   version            INT UNSIGNED NOT NULL DEFAULT 1,
   created_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -91,7 +95,7 @@ CREATE TABLE children (
   UNIQUE KEY uq_children_username (username),
   CONSTRAINT fk_children_family FOREIGN KEY (family_id) REFERENCES families (id),
   CONSTRAINT ck_children_grade CHECK (grade BETWEEN 1 AND 6),
-  CONSTRAINT ck_children_nickname CHECK (CHAR_LENGTH(TRIM(nickname)) BETWEEN 1 AND 20),
+  CONSTRAINT ck_children_nickname CHECK (CHAR_LENGTH(TRIM(nickname)) BETWEEN 1 AND 24),
   CONSTRAINT ck_children_credentials CHECK ((username IS NULL) = (password_hash IS NULL)),
   CONSTRAINT ck_children_username CHECK (username IS NULL OR REGEXP_LIKE(username, '^[a-z][a-z0-9_]{3,31}$', 'c'))
 ) ENGINE=InnoDB;
@@ -102,11 +106,14 @@ CREATE TABLE admin_accounts (
   password_hash      VARCHAR(255) NOT NULL,
   totp_secret_enc    VARBINARY(255) NOT NULL,                -- 以服务端主密钥加密的 TOTP 种子
   status             ENUM('active','disabled') NOT NULL DEFAULT 'active',
-  failed_login_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  failed_login_count TINYINT UNSIGNED NOT NULL DEFAULT 0,    -- 连续错误 5 次 → 锁定 15 分钟并清零（用户 2026-10-22）
   locked_until       DATETIME(3)  NULL,
+  password_changed_at DATETIME(3) NULL,                      -- 在后台自助改密码（旧系统有）
+  totp_reset_at      DATETIME(3)  NULL,                      -- 只由运维命令 xingya admin:reset-totp 写（migrator）
   created_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
-  UNIQUE KEY uq_admin_username (username)
+  UNIQUE KEY uq_admin_username (username),
+  CONSTRAINT ck_admin_failed_count CHECK (failed_login_count <= 5)
 ) ENGINE=InnoDB;
 
 CREATE TABLE family_devices (
@@ -170,7 +177,7 @@ CREATE TABLE auth_tokens (
   token_hash           BINARY(32)   NOT NULL,
   family_id            BIGINT UNSIGNED NULL,
   parent_id            BIGINT UNSIGNED NULL,                 -- verify_email / reset_password 的目标家长
-  email                VARCHAR(254) NULL,                    -- invite_parent 的受邀邮箱
+  email                VARCHAR(254) NULL,                    -- invite_parent 的受邀邮箱；family_signup 可选：填了则只有该邮箱能用此注册码（用户 2026-10-22）
   created_by_parent_id BIGINT UNSIGNED NULL,
   created_by_admin_id  BIGINT UNSIGNED NULL,
   expires_at           DATETIME(3)  NOT NULL,
@@ -188,6 +195,7 @@ CREATE TABLE auth_tokens (
           AND created_by_parent_id IS NOT NULL AND created_by_admin_id IS NULL)
     OR (purpose = 'family_signup' AND family_id IS NULL AND parent_id IS NULL AND created_by_parent_id IS NULL
           AND created_by_admin_id IS NOT NULL)),
+  CONSTRAINT ck_auth_tokens_email CHECK (email IS NULL OR (CAST(email AS BINARY) = CAST(LOWER(email) AS BINARY) AND email LIKE '%_@_%')),
   CONSTRAINT ck_auth_tokens_expiry CHECK (expires_at > created_at)
 ) ENGINE=InnoDB;
 
@@ -209,7 +217,7 @@ CREATE TABLE audit_events (                                  -- 只追加
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 2. AI 工作室 studio（14 张：任务队列、素材库、资料库、月度预算 + 2b 节 Skill 与 AI 角色 10 张）
+-- 2. AI 工作室 studio（16 张：任务队列、素材库、资料库与扫码上传链接、月度预算、模型配置 + 2b 节 Skill 与 AI 角色 10 张）
 -- ---------------------------------------------------------------------
 CREATE TABLE ai_jobs (                                       -- MySQL 中的后台任务队列（单进程消费）
   id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -291,7 +299,21 @@ CREATE TABLE assets (                                        -- 素材库：图�
   CONSTRAINT ck_assets_prompt CHECK (source <> 'ai_image' OR prompt IS NOT NULL)
 ) ENGINE=InnoDB;
 
-CREATE TABLE materials (                                     -- 课程资料库（PDF/Word/PPT/照片/文本）；文件在 OSS 私有前缀
+CREATE TABLE material_upload_links (                         -- 扫码上传（旧系统）：系统管理员生成 72 小时有效的匿名上传链接与二维码
+  id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  token_hash          BINARY(32)   NOT NULL,                 -- 链接令牌的 SHA-256；明文只出现在二维码里
+  label               VARCHAR(40)  NULL,
+  created_by_admin_id BIGINT UNSIGNED NOT NULL,
+  expires_at          DATETIME(3)  NOT NULL,
+  revoked_at          DATETIME(3)  NULL,
+  created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_material_upload_links_token (token_hash),
+  CONSTRAINT fk_material_upload_links_admin FOREIGN KEY (created_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_material_upload_links_expiry CHECK (expires_at > created_at AND expires_at <= created_at + INTERVAL 72 HOUR)
+) ENGINE=InnoDB;
+
+CREATE TABLE materials (                                     -- 课程资料库（PDF/Word/PPT/照片/文本）；文件在 OSS 私有前缀；软删除可恢复
   id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   title               VARCHAR(80)  NOT NULL,
   kind                ENUM('pdf','docx','pptx','image','text') NOT NULL,
@@ -299,14 +321,52 @@ CREATE TABLE materials (                                     -- 课程资料库�
   sha256              BINARY(32)   NOT NULL,
   bytes               INT UNSIGNED NOT NULL,
   extraction_status   ENUM('pending','done','failed') NOT NULL DEFAULT 'pending',
-  extracted_text      MEDIUMTEXT   NULL,                     -- 文本抽取 / 照片 OCR 结果
-  uploaded_by_admin_id BIGINT UNSIGNED NOT NULL,
+  extracted_text      MEDIUMTEXT   NULL,                     -- 文本抽取 / 照片由视觉大模型识别文字的结果（ADR 0022，无专用 OCR 服务）
+  uploaded_by_admin_id BIGINT UNSIGNED NOT NULL,             -- 扫码上传时 = 生成链接的系统管理员
+  upload_link_id      BIGINT UNSIGNED NULL,                  -- 经扫码上传时记录链接
+  deleted_at          DATETIME(3)  NULL,                     -- 软删除（旧系统：可恢复）
+  deleted_by_admin_id BIGINT UNSIGNED NULL,
   created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uq_materials_oss_key (oss_key),
   CONSTRAINT fk_materials_admin FOREIGN KEY (uploaded_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT fk_materials_link FOREIGN KEY (upload_link_id) REFERENCES material_upload_links (id),
+  CONSTRAINT fk_materials_deleter FOREIGN KEY (deleted_by_admin_id) REFERENCES admin_accounts (id),
   CONSTRAINT ck_materials_bytes CHECK (bytes BETWEEN 1 AND 20971520),       -- ≤ 20 MB
-  CONSTRAINT ck_materials_text CHECK ((extraction_status = 'done') = (extracted_text IS NOT NULL))
+  CONSTRAINT ck_materials_text CHECK ((extraction_status = 'done') = (extracted_text IS NOT NULL)),
+  CONSTRAINT ck_materials_deleted CHECK ((deleted_at IS NULL) = (deleted_by_admin_id IS NULL))
+) ENGINE=InnoDB;
+
+CREATE TABLE ai_providers (                                  -- 模型配置（ADR 0022）：聊天 / 视觉（识图、识别文字）/ 图像生成分别配置，默认阿里云百炼
+  id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  purpose             ENUM('chat','vision','image') NOT NULL,
+  name                VARCHAR(40)  NOT NULL,                 -- 后台显示名，如 通义千问（聊天）
+  vendor              VARCHAR(40)  NOT NULL,                 -- 提供方，如 阿里云百炼
+  base_url            VARCHAR(2048) NOT NULL,                -- 只允许 https
+  model               VARCHAR(64)  NOT NULL,                 -- 模型名，后台可改
+  api_key_enc         VARBINARY(1024) NULL,                  -- 以服务端主密钥 AES-256-GCM 加密的密钥；接口只写不读，只返回“已设置/未设置”
+  max_input_tokens    INT UNSIGNED NULL,
+  max_output_tokens   INT UNSIGNED NULL,
+  supports_tools      TINYINT(1)   NOT NULL DEFAULT 0,
+  child_selectable    TINYINT(1)   NOT NULL DEFAULT 0,       -- 只对 chat：孩子可在呀哈哈队长里切换到这个模型（旧系统“学生可切换”）
+  is_default          TINYINT(1)   NOT NULL DEFAULT 0,       -- 每种用途的默认配置
+  status              ENUM('active','disabled') NOT NULL DEFAULT 'active',
+  default_key         VARCHAR(8)   AS (IF(is_default = 1 AND status = 'active', purpose, NULL)) STORED,
+  last_tested_at      DATETIME(3)  NULL,                     -- “测试连接”结果
+  last_test_ok        TINYINT(1)   NULL,
+  version             INT UNSIGNED NOT NULL DEFAULT 1,
+  updated_by_admin_id BIGINT UNSIGNED NULL,
+  created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ai_providers_name (name),
+  UNIQUE KEY uq_ai_providers_default (default_key),          -- 每种用途最多一个有效默认
+  CONSTRAINT fk_ai_providers_admin FOREIGN KEY (updated_by_admin_id) REFERENCES admin_accounts (id),
+  CONSTRAINT ck_ai_providers_url CHECK (base_url LIKE 'https://%'),
+  CONSTRAINT ck_ai_providers_model CHECK (CHAR_LENGTH(TRIM(model)) >= 1),
+  CONSTRAINT ck_ai_providers_child CHECK (child_selectable = 0 OR purpose = 'chat'),
+  CONSTRAINT ck_ai_providers_tokens CHECK ((max_input_tokens IS NULL OR max_input_tokens BETWEEN 1000 AND 10000000)
+                                       AND (max_output_tokens IS NULL OR max_output_tokens BETWEEN 256 AND 131072))
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
@@ -365,7 +425,7 @@ CREATE TABLE skill_versions (                                -- 每次编辑 = �
   allowed_tools               JSON         NOT NULL,         -- 内置工具白名单（名称数组；不存在“发布”类工具）
   resources                   JSON         NOT NULL DEFAULT (JSON_ARRAY()),  -- 参考资料 [{name, kind:'text'|'asset', text?|assetId?, inert?}]
   default_params              JSON         NOT NULL DEFAULT (JSON_OBJECT()), -- 可被角色覆盖的参数及默认值
-  preferred_model             VARCHAR(64)  NULL,             -- NULL = 使用角色或系统设置 ai.model
+  preferred_model             VARCHAR(64)  NULL,             -- NULL = 使用角色或该用途的默认模型配置（ai_providers.name）
   source                      ENUM('editor','import','seed') NOT NULL,
   import_report               JSON         NULL,             -- 导入时被忽略或作为惰性文本保存的文件（脚本永不执行）
   content_sha256              BINARY(32)   NOT NULL,
@@ -428,7 +488,7 @@ CREATE TABLE agent_versions (                                -- 角色配置的�
   avatar_asset_id             BIGINT UNSIGNED NULL,
   description                 VARCHAR(500) NOT NULL,         -- 角色说明（系统提示词中的角色段）
   allowed_tools               JSON         NOT NULL,         -- 角色允许的内置工具；实际可用 = 角色 ∩ 技能 ∩ 受众工具目录
-  model                       VARCHAR(64)  NULL,             -- NULL = 系统设置 ai.model
+  model                       VARCHAR(64)  NULL,             -- NULL = 该用途的默认模型配置（ai_providers.name）
   monthly_budget_fen          INT UNSIGNED NOT NULL,         -- 角色月度预算（在全站 AI 预算之内）
   params                      JSON         NOT NULL DEFAULT (JSON_OBJECT()),
   based_on_version_id         BIGINT UNSIGNED NULL,
@@ -601,7 +661,7 @@ CREATE TABLE agent_run_steps (                               -- 每一步的记�
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 3. 课程内容 content（9 张：共享词库 + 数据库课程、版本与单元；已发布版本只追加、不可改）
+-- 3. 课程内容 content（10 张：共享词库 + 数据库课程、版本、单元与学习卡；已发布版本只追加、不可改）
 -- ---------------------------------------------------------------------
 CREATE TABLE words (                                         -- 共享词库：拼写形式
   id             VARCHAR(64)  NOT NULL,                      -- 稳定词 ID，如 en.apple、en.ice-cream；永不改义、永不复用
@@ -682,6 +742,9 @@ CREATE TABLE course_versions (                               -- 只追加：一�
 ALTER TABLE courses ADD CONSTRAINT fk_courses_current
   FOREIGN KEY (id, current_version_id) REFERENCES course_versions (course_id, id);   -- 当前版本必须属于本课程
 
+ALTER TABLE children ADD CONSTRAINT fk_children_current_course
+  FOREIGN KEY (current_course_id) REFERENCES courses (id);                          -- 孩子自选的当前课程（是否开放由服务端判断）
+
 CREATE TABLE course_drafts (                                 -- 可编辑草稿：draft → in_review → publishing → published
   id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   course_id            VARCHAR(64)  NOT NULL,
@@ -721,6 +784,8 @@ CREATE TABLE units (                                         -- 只追加：单�
   title             VARCHAR(60)  NOT NULL,                   -- 如 Unit 3 Animals
   title_zh          VARCHAR(60)  NULL,                       -- 如 动物
   cover_asset_id    BIGINT UNSIGNED NULL,
+  extra_title       VARCHAR(60)  NULL,                       -- 单元拓展卡（附加听读）的标题；拓展卡见 learning_cards
+  extra_note        VARCHAR(200) NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_units_key (course_version_id, unit_key),
   UNIQUE KEY uq_units_seq (course_version_id, seq),
@@ -741,10 +806,13 @@ CREATE TABLE levels (                                        -- 只追加：属�
   scene_asset_id    BIGINT UNSIGNED NULL,                    -- 关卡地图场景图（藏匿点所在）
   pages             JSON         NULL,                       -- 绘本阅读课的分页内容（图、句、音频）
   hiding_spots      JSON         NOT NULL,                   -- 场景中的 3 个藏匿点定义 [{kind, x, y}]（呀哈哈发现用）
+  station           VARCHAR(40)  NULL,                       -- 地图分组（旧系统 station），只用于单元冒险地图展示
+  hidden_reward     ENUM('double','fixed') NULL,             -- 隐藏奖励（旧系统）：double = 本次新得星翻倍，fixed = 一次 20 星；每单元 ≤ 2 关（自动检查）
   PRIMARY KEY (id),
   UNIQUE KEY uq_levels_key (unit_id, level_key),            -- level_key 在单元内唯一（不同单元都可以有 l01）
   UNIQUE KEY uq_levels_seq (unit_id, seq),
   UNIQUE KEY uq_levels_version_id (course_version_id, id),
+  UNIQUE KEY uq_levels_unit_id (unit_id, id),                -- 供学习卡复合外键：卡片的关卡必须属于同一单元
   CONSTRAINT fk_levels_unit  FOREIGN KEY (course_version_id, unit_id) REFERENCES units (course_version_id, id),
   CONSTRAINT fk_levels_scene FOREIGN KEY (scene_asset_id) REFERENCES assets (id),
   CONSTRAINT ck_levels_key CHECK (REGEXP_LIKE(level_key, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')),
@@ -761,6 +829,7 @@ CREATE TABLE questions (                                     -- 只追加：孩�
   scored       TINYINT(1)   NOT NULL,
   sense_id     VARCHAR(96)  NULL,                            -- 考查的义项（句型/阅读题可为空）
   visible      JSON         NOT NULL,                        -- 题干、选项（带选项 ID）、资源 ID；不得含答案字段
+  source       VARCHAR(120) NULL,                            -- 题目来源（教材与页码，旧系统 source），只在后台显示
   PRIMARY KEY (id),
   UNIQUE KEY uq_questions_key (level_id, question_key),
   UNIQUE KEY uq_questions_seq (level_id, seq),
@@ -777,38 +846,65 @@ CREATE TABLE question_answers (                              -- 只追加：答�
   question_id  BIGINT UNSIGNED NOT NULL,
   answer       JSON         NOT NULL,                        -- 选项 ID / 排序后的选项 ID 数组 / 拼写答案与 accept[]
   explanation  VARCHAR(500) NULL,
+  reveal       JSON         NULL,                            -- 作答后显示（旧系统）：听力原文、中文、例句与翻译 {transcript, zh, example, exampleZh}
   PRIMARY KEY (question_id),
-  CONSTRAINT fk_question_answers_question FOREIGN KEY (question_id) REFERENCES questions (id)
+  CONSTRAINT fk_question_answers_question FOREIGN KEY (question_id) REFERENCES questions (id),
+  CONSTRAINT ck_question_answers_reveal CHECK (reveal IS NULL OR JSON_TYPE(reveal) = 'OBJECT')
+) ENGINE=InnoDB;
+
+CREATE TABLE learning_cards (                                -- 只追加：学习卡（先学后练，不计分；旧系统每关必有，ADR 0020）
+  id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  course_version_id BIGINT UNSIGNED NOT NULL,
+  unit_id           BIGINT UNSIGNED NOT NULL,
+  level_id          BIGINT UNSIGNED NULL,                    -- NULL = 单元拓展卡（附加听读）；否则 = 关卡开头的学习卡
+  scope_key         BIGINT UNSIGNED AS (COALESCE(level_id, 0)) STORED,
+  card_key          VARCHAR(32)  NOT NULL,
+  seq               TINYINT UNSIGNED NOT NULL,
+  kind              ENUM('word','sentence','letter','phonics') NOT NULL,  -- letter = 字母大小写与例词卡
+  sense_id          VARCHAR(96)  NULL,
+  content           JSON         NOT NULL,                   -- {word, meaning, pinyin?, sentence?, sentenceMeaning?, upper?, lower?, examples[≤50], imageAssetId?, audioAssetId?, source?}
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_learning_cards_key (unit_id, scope_key, card_key),
+  UNIQUE KEY uq_learning_cards_seq (unit_id, scope_key, seq),
+  CONSTRAINT fk_learning_cards_unit  FOREIGN KEY (course_version_id, unit_id) REFERENCES units (course_version_id, id),
+  CONSTRAINT fk_learning_cards_level FOREIGN KEY (unit_id, level_id) REFERENCES levels (unit_id, id),
+  CONSTRAINT fk_learning_cards_sense FOREIGN KEY (sense_id) REFERENCES word_senses (id),
+  CONSTRAINT ck_learning_cards_key CHECK (REGEXP_LIKE(card_key, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')),
+  CONSTRAINT ck_learning_cards_seq CHECK (seq BETWEEN 1 AND 50),
+  CONSTRAINT ck_learning_cards_content CHECK (JSON_TYPE(content) = 'OBJECT'
+    AND (JSON_EXTRACT(content, '$.examples') IS NULL OR JSON_LENGTH(content, '$.examples') <= 50))
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 4. 学习 learning（11 张：闯关与复习 6 张 + 4b 节单词本 5 张）
+-- 4. 学习 learning（13 张：闯关与复习 6 张 + 隐藏奖励与秘密路线 2 张 + 4b 节单词本 5 张）
 -- ---------------------------------------------------------------------
-CREATE TABLE plays (                                         -- 一次作答（闯关或复习）：下发可见题目，逐题记录第一次作答
+CREATE TABLE plays (                                         -- 一次作答（闯关、复习或秘密路线）：下发可见题目，逐题记录第一次作答；不过期，再次开始同一关恢复这次作答（旧系统）
   id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   family_id         BIGINT UNSIGNED NOT NULL,
   child_id          BIGINT UNSIGNED NOT NULL,
-  kind              ENUM('level','review') NOT NULL,
+  kind              ENUM('level','review','secret') NOT NULL,
   course_version_id BIGINT UNSIGNED NULL,                    -- 开始时的版本；作答在该版本上完成
-  level_id          BIGINT UNSIGNED NULL,
+  level_id          BIGINT UNSIGNED NULL,                    -- 秘密路线 = 题目来源关卡（单元第 1 / 2 / 3 关）
+  secret_route      ENUM('coins','kart','moon') NULL,         -- 秘密路线：金币小径 / 赛车捷径 / 月亮秘境
   client_request_id CHAR(36)     NOT NULL,
   local_date        DATE         NOT NULL,
   items             JSON         NOT NULL,                   -- 下发的题目 ID、选项顺序（每次打乱）、本次随机选项令牌 ↔ 选项 ID 映射、复习生成题的选项
   responses         JSON         NOT NULL DEFAULT (JSON_OBJECT()),  -- {questionKey: {response, correct}}，每题只记第一次
-  status            ENUM('open','finished','expired') NOT NULL DEFAULT 'open',
+  status            ENUM('open','finished','abandoned') NOT NULL DEFAULT 'open',   -- abandoned：课程改版后旧版本的未完成作答由孩子放弃
+  open_slot         VARCHAR(48)  AS (IF(status = 'open', CONCAT(kind, ':', COALESCE(level_id, 0), ':', COALESCE(secret_route, '')), NULL)) STORED,
   started_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  expires_at        DATETIME(3)  NOT NULL,
   finished_at       DATETIME(3)  NULL,
   companion_level   TINYINT UNSIGNED NULL,                   -- 开始时跟随伙伴的等级快照（伙伴附赠积分用，ADR 0017）；没有跟随伙伴为 NULL
   PRIMARY KEY (id),
   UNIQUE KEY uq_plays_request (child_id, client_request_id),
+  UNIQUE KEY uq_plays_open (child_id, open_slot),            -- 同一关（同一条秘密路线、复习）同时只有一次未完成作答：再次开始即恢复
   KEY ix_plays_child (child_id, status, started_at),
   KEY ix_plays_family (family_id, child_id),
   CONSTRAINT fk_plays_child FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_plays_level FOREIGN KEY (course_version_id, level_id) REFERENCES levels (course_version_id, id),
-  CONSTRAINT ck_plays_kind CHECK ((kind = 'level') = (level_id IS NOT NULL) AND (level_id IS NULL) = (course_version_id IS NULL)),
+  CONSTRAINT ck_plays_kind CHECK ((kind IN ('level','secret')) = (level_id IS NOT NULL) AND (level_id IS NULL) = (course_version_id IS NULL)
+                                 AND (kind = 'secret') = (secret_route IS NOT NULL)),
   CONSTRAINT ck_plays_finished CHECK ((status = 'finished') = (finished_at IS NOT NULL)),
-  CONSTRAINT ck_plays_expiry CHECK (expires_at > started_at),
   CONSTRAINT ck_plays_companion_level CHECK (companion_level IS NULL OR companion_level BETWEEN 1 AND 100),
   CONSTRAINT ck_plays_request_id CHECK (REGEXP_LIKE(client_request_id, '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', 'c'))
 ) ENGINE=InnoDB;
@@ -843,6 +939,7 @@ CREATE TABLE unit_progress (                                 -- 单元进度：�
   levels_three_star       SMALLINT UNSIGNED NOT NULL DEFAULT 0,  -- 最佳星级 = 3 的关卡数
   first_completed_at      DATETIME(3)  NULL,                 -- 首次全部关卡通过：下一单元第一关从此解锁（之后不再收回）
   first_all_three_star_at DATETIME(3)  NULL,                 -- 首次全部关卡 3 星级：触发 unit_first_all_three_star（只一次）
+  review_correct          INT UNSIGNED NOT NULL DEFAULT 0,   -- 来源于本单元的复习条目累计答对次数（月亮秘境：≥ 5 时被发现）
   updated_at              DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (child_id, course_id, unit_key),
   KEY ix_unit_progress_family (family_id, child_id),
@@ -865,10 +962,10 @@ CREATE TABLE attempts (                                      -- 只追加：一�
   scored_count      TINYINT UNSIGNED NOT NULL,
   correct_count     TINYINT UNSIGNED NOT NULL,
   accuracy_pct      TINYINT UNSIGNED AS (FLOOR(correct_count * 100 / scored_count)) STORED,
-  stars             TINYINT UNSIGNED AS (CASE WHEN correct_count = scored_count THEN 3
-                                              WHEN correct_count * 100 >= scored_count * 90 THEN 2
-                                              WHEN correct_count * 100 >= scored_count * 80 THEN 1
-                                              ELSE 0 END) STORED,
+  stars             TINYINT UNSIGNED AS (CASE WHEN correct_count = scored_count THEN 3            -- 全对 3 星级
+                                              WHEN correct_count * 100 < scored_count * 80 THEN 0     -- 未通过
+                                              WHEN correct_count = scored_count - 1 THEN 2            -- 只错 1 题且 ≥ 80% → 2 星级
+                                              ELSE 1 END) STORED,                                     -- 其余 ≥ 80% → 1 星级（用户 2026-10-22）
   passed            TINYINT(1)   AS (correct_count * 100 >= scored_count * 80) STORED,
   stars_awarded     TINYINT UNSIGNED NOT NULL,               -- 本次实际发放的星星（只发提升差额）
   answers           JSON         NOT NULL,                   -- [{questionId, senseId, response, correct}]
@@ -892,6 +989,8 @@ CREATE TABLE review_items (                                  -- 间隔复习条�
   sense_id         VARCHAR(96)  NULL,
   question_id      BIGINT UNSIGNED NULL,
   ref_id           VARCHAR(96)  AS (COALESCE(sense_id, CAST(question_id AS CHAR))) STORED,
+  origin_course_id VARCHAR(64)  NULL,                        -- 首次进入复习时所在的课程与单元（月亮秘境按单元统计复习答对）
+  origin_unit_key  VARCHAR(32)  NULL,
   box              TINYINT UNSIGNED NOT NULL DEFAULT 1,       -- 1..6 对应间隔 1,2,4,7,15,30 天
   due_date         DATE         NOT NULL,
   lapses           SMALLINT UNSIGNED NOT NULL DEFAULT 0,
@@ -908,6 +1007,8 @@ CREATE TABLE review_items (                                  -- 间隔复习条�
   CONSTRAINT ck_review_items_ref CHECK (
        (item_type = 'sense'    AND sense_id IS NOT NULL AND question_id IS NULL)
     OR (item_type = 'question' AND question_id IS NOT NULL AND sense_id IS NULL)),
+  CONSTRAINT fk_review_items_origin FOREIGN KEY (origin_course_id) REFERENCES courses (id),
+  CONSTRAINT ck_review_items_origin CHECK ((origin_course_id IS NULL) = (origin_unit_key IS NULL)),
   CONSTRAINT ck_review_items_box CHECK (box BETWEEN 1 AND 6)
 ) ENGINE=InnoDB;
 
@@ -930,6 +1031,47 @@ CREATE TABLE review_sessions (                               -- 只追加：一�
   CONSTRAINT fk_review_sessions_child FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_review_sessions_play  FOREIGN KEY (play_id) REFERENCES plays (id),
   CONSTRAINT ck_review_sessions_counts CHECK (item_count BETWEEN 0 AND 20 AND correct_count <= item_count)
+) ENGINE=InnoDB;
+
+CREATE TABLE hidden_reward_claims (                          -- 只追加：隐藏奖励（旧 bonus_claims）——每个孩子每关只领一次；翻倍时本次没有新增星则 amount = 0，同样算已领
+  family_id   BIGINT UNSIGNED NOT NULL,
+  child_id    BIGINT UNSIGNED NOT NULL,
+  course_id   VARCHAR(64)  NOT NULL,
+  unit_key    VARCHAR(32)  NOT NULL,
+  level_key   VARCHAR(32)  NOT NULL,
+  reward_type ENUM('double','fixed') NOT NULL,
+  amount      TINYINT UNSIGNED NOT NULL,
+  attempt_id  BIGINT UNSIGNED NOT NULL,
+  ledger_id   BIGINT UNSIGNED NULL,                          -- hidden_reward 星星流水（amount = 0 时没有）
+  claimed_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (child_id, course_id, unit_key, level_key),
+  UNIQUE KEY uq_hidden_reward_claims_attempt (attempt_id),
+  KEY ix_hidden_reward_claims_family (family_id, child_id),
+  CONSTRAINT fk_hidden_reward_claims_child   FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_hidden_reward_claims_course  FOREIGN KEY (course_id) REFERENCES courses (id),
+  CONSTRAINT fk_hidden_reward_claims_attempt FOREIGN KEY (attempt_id) REFERENCES attempts (id),
+  CONSTRAINT ck_hidden_reward_claims_amount CHECK ((reward_type = 'fixed' AND amount = 20) OR (reward_type = 'double' AND amount BETWEEN 0 AND 3)),
+  CONSTRAINT ck_hidden_reward_claims_ledger CHECK ((amount = 0) = (ledger_id IS NULL))
+) ENGINE=InnoDB;
+
+CREATE TABLE secret_routes (                                 -- 秘密路线（旧系统 secrets.mjs）：每单元 3 条，发现 → 付入场费 → 通过后领一次 2 倍奖励
+  family_id        BIGINT UNSIGNED NOT NULL,
+  child_id         BIGINT UNSIGNED NOT NULL,
+  course_id        VARCHAR(64)  NOT NULL,
+  unit_key         VARCHAR(32)  NOT NULL,
+  route            ENUM('coins','kart','moon') NOT NULL,     -- 金币小径（单元内任一关 3 星级）/ 赛车捷径（单元内通过 ≥ 3 关）/ 月亮秘境（单元复习答对 ≥ 5）
+  entry_cost       TINYINT UNSIGNED AS (CASE route WHEN 'coins' THEN 2 WHEN 'kart' THEN 5 ELSE 10 END) STORED,
+  discovered_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  entry_ledger_id  BIGINT UNSIGNED NULL,                     -- secret_entry 流水；付过一次后重试免费
+  entered_at       DATETIME(3)  NULL,
+  passed_at        DATETIME(3)  NULL,
+  reward_ledger_id BIGINT UNSIGNED NULL,                     -- secret_reward 流水（2 × 入场费，只一次）
+  PRIMARY KEY (child_id, course_id, unit_key, route),
+  KEY ix_secret_routes_family (family_id, child_id),
+  CONSTRAINT fk_secret_routes_child  FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_secret_routes_course FOREIGN KEY (course_id) REFERENCES courses (id),
+  CONSTRAINT ck_secret_routes_entered CHECK ((entered_at IS NULL) = (entry_ledger_id IS NULL)),
+  CONSTRAINT ck_secret_routes_passed CHECK ((passed_at IS NULL) = (reward_ledger_id IS NULL) AND (passed_at IS NULL OR entered_at IS NOT NULL))
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
@@ -1044,7 +1186,7 @@ CREATE TABLE word_random_draws (                             -- 只追加：同�
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 5. 星星、碎片与积分 stars（6 张；ledger 只追加：应用账号无 UPDATE/DELETE）
+-- 5. 星星、碎片与积分 stars（8 张；ledger、reward_ledger 只追加：应用账号无 UPDATE/DELETE）
 --    积分（currency='point'，ADR 0017）的 delta / balance_after 以 0.01 积分为单位（1 积分 = 100）
 -- ---------------------------------------------------------------------
 CREATE TABLE ledger (                                        -- 星星、碎片与积分共用的只追加账本；currency 区分币种
@@ -1052,19 +1194,20 @@ CREATE TABLE ledger (                                        -- 星星、碎片�
   family_id       BIGINT UNSIGNED NOT NULL,
   child_id        BIGINT UNSIGNED NOT NULL,
   currency        ENUM('star','fragment','point') NOT NULL,  -- 枚举顺序即锁顺序：star → fragment → point
-  kind            ENUM('level_pass','review_day','streak','parent_award',
+  kind            ENUM('level_pass','review_day','streak','parent_award','parent_deduct',
                        'gift_in','gift_out','purchase',
                        'redeem_hold','redeem_release','redeem_debit',
-                       'pet_adopt','den_expand','discovery','discovery_bonus',
+                       'pet_adopt','pet_refund','den_expand','discovery','learning_card',
+                       'hidden_reward','secret_entry','secret_reward',
                        'level_listen','word_listen','review_correct','pet_bonus','point_convert',
-                       'word_challenge','word_exam') NOT NULL,                  -- 单词本闯关 / 考试进步星（奖励星，ADR 0019）
+                       'word_challenge','word_exam') NOT NULL,                  -- 单词闯关 / 考试星与关卡星一样算学习星（用户 2026-10-22）
   delta           INT          NOT NULL,
   balance_after   INT          NOT NULL,                     -- 该孩子该币种的余额
-  source_key      VARCHAR(96)  NOT NULL,                     -- 业务幂等键，如 attempt:123、frag:level:en-g1-a:u03:l01:2026-10-21、listen:{playId}:{target}、convert:{requestId}
+  source_key      VARCHAR(96)  NOT NULL,                     -- 业务幂等键，如 attempt:123、card:{playId}:{cardKey}、listen:{playId}:{target}、convert:{requestId}
   local_date      DATE         NOT NULL,
-  counts_for_leaderboard TINYINT(1) AS (currency = 'star' AND kind IN ('level_pass','streak')) STORED,  -- = “学习星”（复习不发星，ADR 0017）
+  counts_for_leaderboard TINYINT(1) AS (currency = 'star' AND kind IN ('level_pass','streak','hidden_reward','secret_reward','word_challenge','word_exam')) STORED,  -- = “学习星”（ADR 0019 修订、ADR 0020）
   actor_parent_id BIGINT UNSIGNED NULL,
-  note            VARCHAR(100) NULL,
+  note            VARCHAR(300) NULL,                         -- 家长加星 / 扣星的原因（扣星必填，旧系统 ≤ 300 字）
   created_at      DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uq_ledger_source (child_id, currency, source_key),
@@ -1075,30 +1218,37 @@ CREATE TABLE ledger (                                        -- 星星、碎片�
   CONSTRAINT fk_ledger_child FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_ledger_parent FOREIGN KEY (family_id, actor_parent_id) REFERENCES parents (family_id, id),
   CONSTRAINT ck_ledger_currency_kind CHECK (
-       (currency = 'star'     AND kind NOT IN ('discovery','review_day','level_listen','word_listen','review_correct','pet_bonus'))  -- 含 word_challenge / word_exam
-    OR (currency = 'fragment' AND kind IN ('level_pass','review_day','discovery','pet_adopt'))
+       (currency = 'star'     AND kind NOT IN ('discovery','review_day','learning_card','level_listen','word_listen','review_correct','pet_bonus'))
+    OR (currency = 'fragment' AND kind IN ('learning_card','review_day','discovery','pet_adopt','pet_refund'))   -- 碎片：学习卡首次展示、完成当日复习、呀哈哈（旧系统 + 用户指定）
     OR (currency = 'point'    AND kind IN ('level_listen','word_listen','review_correct','pet_bonus','point_convert'))),
   CONSTRAINT ck_ledger_sign CHECK (
-       (kind IN ('level_pass','review_day','streak','parent_award','gift_in','redeem_release','discovery','discovery_bonus',
+       (kind IN ('level_pass','review_day','streak','parent_award','gift_in','redeem_release','discovery','learning_card',
+                 'hidden_reward','secret_reward','pet_refund',
                  'level_listen','word_listen','review_correct','pet_bonus','word_challenge','word_exam') AND delta > 0)
-    OR (kind IN ('gift_out','purchase','redeem_hold','redeem_debit','pet_adopt','den_expand') AND delta < 0)
+    OR (kind IN ('gift_out','purchase','redeem_hold','redeem_debit','pet_adopt','den_expand','parent_deduct','secret_entry') AND delta < 0)
     OR (kind = 'point_convert' AND ((currency = 'star' AND delta > 0) OR (currency = 'point' AND delta < 0)))),  -- 积分换星：积分出、星星入
   CONSTRAINT ck_ledger_ranges CHECK (
-       (kind <> 'level_pass'      OR delta BETWEEN 1 AND 3)    -- 星：提升差额 1–3；碎片：本次星级 1–3
+       (kind <> 'level_pass'      OR delta BETWEEN 1 AND 3)    -- 只有星星：提升差额 1–3
    AND (kind <> 'review_day'      OR delta = 2)                -- 只有碎片
    AND (kind NOT IN ('level_listen','word_listen') OR delta = 10)   -- +0.1 积分
    AND (kind <> 'review_correct'  OR delta = 100)              -- 每道答对的复习题 +1 积分
-   AND (kind <> 'pet_bonus'       OR delta BETWEEN 10 AND 3000) -- 星数（通关 1–3，单词闯关 1–30）× 每星 0.10–1.00 积分
+   AND (kind <> 'pet_bonus'       OR delta BETWEEN 10 AND 3000) -- 星数（通关 + 隐藏奖励 ≤ 23、秘密路线 ≤ 20、单词闯关 ≤ 30）× 每星 0.10–1.00 积分
+   AND (kind <> 'learning_card'   OR delta BETWEEN 1 AND 3)    -- 学习卡首次展示随机 1–3 片（旧系统）
+   AND (kind <> 'hidden_reward'   OR delta BETWEEN 1 AND 20)   -- 翻倍 1–3 或宝箱 20
+   AND (kind <> 'secret_entry'    OR delta IN (-2,-5,-10))
+   AND (kind <> 'secret_reward'   OR delta IN (4,10,20))
+   AND (kind <> 'pet_refund'      OR delta BETWEEN 1 AND 10000)
    AND (kind <> 'word_challenge'  OR delta BETWEEN 1 AND 30)   -- 最多 50 词 × 3 单位 + 余量 4，÷ 5
    AND (kind <> 'word_exam'       OR delta BETWEEN 1 AND 20)   -- 最多 50 词 × 2 单位 + 余量 4，÷ 5
    AND (kind <> 'point_convert'   OR (currency = 'star' AND delta BETWEEN 1 AND 1000)
                                   OR (currency = 'point' AND delta BETWEEN -1000000 AND -1000 AND MOD(delta, 1000) = 0))  -- 10 积分 = 1 星
    AND (kind <> 'discovery'       OR delta = 1)
-   AND (kind <> 'discovery_bonus' OR delta BETWEEN 1 AND 50)
-   AND (kind <> 'parent_award'    OR delta BETWEEN 1 AND 50)
+   AND (kind <> 'parent_award'    OR delta BETWEEN 1 AND 1000000)       -- 旧系统 1–1000000
+   AND (kind <> 'parent_deduct'   OR delta BETWEEN -1000000 AND -1)
    AND (kind NOT IN ('gift_in','gift_out') OR ABS(delta) BETWEEN 1 AND 20)),
   CONSTRAINT ck_ledger_balance CHECK (balance_after >= 0),
-  CONSTRAINT ck_ledger_actor CHECK ((kind = 'parent_award') = (actor_parent_id IS NOT NULL))
+  CONSTRAINT ck_ledger_actor CHECK ((kind IN ('parent_award','parent_deduct')) = (actor_parent_id IS NOT NULL)),
+  CONSTRAINT ck_ledger_deduct_reason CHECK (kind <> 'parent_deduct' OR CHAR_LENGTH(TRIM(COALESCE(note, ''))) >= 1)
 ) ENGINE=InnoDB;
 
 CREATE TABLE balances (                                      -- 每孩子每币种余额缓存 + 行锁；每晚对账（积分以 0.01 为单位）
@@ -1114,9 +1264,8 @@ CREATE TABLE balances (                                      -- 每孩子每币�
   CONSTRAINT ck_balances_nonneg CHECK (balance >= 0)
 ) ENGINE=InnoDB;
 
-CREATE TABLE shop_items (                                    -- 商店装扮（系统管理员维护；伙伴不在商店，由 companion 模块提供）
+CREATE TABLE shop_items (                                    -- 探险徽章（旧系统：星星小铺“探险徽章”卡，同时只佩戴一枚；系统管理员维护）
   id                  VARCHAR(64)  NOT NULL,
-  slot                ENUM('head','body','accessory') NOT NULL,
   name                VARCHAR(30)  NOT NULL,
   price               INT UNSIGNED NOT NULL,
   image_asset_id      BIGINT UNSIGNED NOT NULL,
@@ -1136,24 +1285,26 @@ CREATE TABLE child_items (
   family_id          BIGINT UNSIGNED NOT NULL,
   child_id           BIGINT UNSIGNED NOT NULL,
   item_id            VARCHAR(64)  NOT NULL,
-  slot               ENUM('head','body','accessory') NOT NULL,   -- 购买时从 shop_items 复制（槽位不可变）
-  equipped           TINYINT(1)   NOT NULL DEFAULT 0,
-  equipped_slot      VARCHAR(16)  AS (IF(equipped = 1, slot, NULL)) STORED,
+  equipped           TINYINT(1)   NOT NULL DEFAULT 0,          -- 佩戴在头像上
+  equipped_key       TINYINT(1)   AS (IF(equipped = 1, 1, NULL)) STORED,
   purchase_ledger_id BIGINT UNSIGNED NOT NULL,
   acquired_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uq_child_items_item (child_id, item_id),
-  UNIQUE KEY uq_child_items_equipped (child_id, equipped_slot),
+  UNIQUE KEY uq_child_items_equipped (child_id, equipped_key),   -- 同时只佩戴一枚徽章
   CONSTRAINT fk_child_items_child FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_child_items_item FOREIGN KEY (item_id) REFERENCES shop_items (id),
   CONSTRAINT fk_child_items_ledger FOREIGN KEY (purchase_ledger_id) REFERENCES ledger (id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE reward_options (                                -- 家长定义的现实奖励
+CREATE TABLE reward_options (                                -- 家长定义的现实奖励（旧系统“喜欢的时光”）：按“份”兑换，每份 = amount_per_portion 个单位
   id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   family_id            BIGINT UNSIGNED NOT NULL,
   title                VARCHAR(40)  NOT NULL,
-  star_price           INT UNSIGNED NOT NULL,
+  description          VARCHAR(200) NULL,
+  unit                 ENUM('minute','fen','count') NOT NULL DEFAULT 'count',   -- 分钟 / 金额（分）/ 次数
+  amount_per_portion   INT UNSIGNED NOT NULL DEFAULT 1,
+  star_price           INT UNSIGNED NOT NULL,                -- 每份的星星价
   active               TINYINT(1)   NOT NULL DEFAULT 1,
   created_by_parent_id BIGINT UNSIGNED NOT NULL,
   version              INT UNSIGNED NOT NULL DEFAULT 1,
@@ -1163,7 +1314,8 @@ CREATE TABLE reward_options (                                -- 家长定义的�
   UNIQUE KEY uq_reward_options_family_id (family_id, id),
   CONSTRAINT fk_reward_options_parent FOREIGN KEY (family_id, created_by_parent_id) REFERENCES parents (family_id, id),
   CONSTRAINT ck_reward_options_title CHECK (CHAR_LENGTH(TRIM(title)) BETWEEN 1 AND 40),
-  CONSTRAINT ck_reward_options_price CHECK (star_price BETWEEN 1 AND 2000)
+  CONSTRAINT ck_reward_options_price CHECK (star_price BETWEEN 1 AND 2000),
+  CONSTRAINT ck_reward_options_amount CHECK (amount_per_portion BETWEEN 1 AND 100000)
 ) ENGINE=InnoDB;
 
 CREATE TABLE redemptions (
@@ -1172,7 +1324,11 @@ CREATE TABLE redemptions (
   child_id             BIGINT UNSIGNED NOT NULL,
   reward_option_id     BIGINT UNSIGNED NOT NULL,
   title_snapshot       VARCHAR(40)  NOT NULL,
-  price                INT UNSIGNED NOT NULL,
+  unit                 ENUM('minute','fen','count') NOT NULL,
+  portions             SMALLINT UNSIGNED NOT NULL DEFAULT 1, -- 份数 1–1000（旧系统）
+  unit_price           INT UNSIGNED NOT NULL,                -- 每份星价快照
+  amount_total         INT UNSIGNED NOT NULL,                -- 批准后计入累计奖励余额的单位数 = 份数 × 每份数量快照
+  price                INT UNSIGNED NOT NULL,                -- 冻结 / 扣除的星星 = 份数 × 每份星价
   status               ENUM('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
   requested_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   decided_at           DATETIME(3)  NULL,
@@ -1185,23 +1341,64 @@ CREATE TABLE redemptions (
   CONSTRAINT fk_redemptions_child  FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_redemptions_option FOREIGN KEY (family_id, reward_option_id) REFERENCES reward_options (family_id, id),
   CONSTRAINT fk_redemptions_parent FOREIGN KEY (family_id, decided_by_parent_id) REFERENCES parents (family_id, id),
-  CONSTRAINT ck_redemptions_price CHECK (price BETWEEN 1 AND 2000),
+  CONSTRAINT ck_redemptions_price CHECK (portions BETWEEN 1 AND 1000 AND unit_price BETWEEN 1 AND 2000 AND price = portions * unit_price
+                                        AND amount_total BETWEEN 1 AND 100000000),
   CONSTRAINT ck_redemptions_decision CHECK (
        (status = 'pending'   AND decided_at IS NULL AND decided_by_parent_id IS NULL)
     OR (status IN ('approved','rejected') AND decided_at IS NOT NULL AND decided_by_parent_id IS NOT NULL)
     OR (status = 'cancelled' AND decided_at IS NOT NULL AND decided_by_parent_id IS NULL))
 ) ENGINE=InnoDB;
 
+CREATE TABLE reward_balances (                               -- 累计奖励余额（旧系统“累计奖励”卡）：兑换获批后增加，孩子用掉或家长核销后减少
+  child_id         BIGINT UNSIGNED NOT NULL,
+  reward_option_id BIGINT UNSIGNED NOT NULL,
+  family_id        BIGINT UNSIGNED NOT NULL,
+  balance          INT UNSIGNED NOT NULL DEFAULT 0,          -- 单位同 reward_options.unit
+  version          INT UNSIGNED NOT NULL DEFAULT 1,
+  updated_at       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (child_id, reward_option_id),
+  CONSTRAINT fk_reward_balances_child  FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_reward_balances_option FOREIGN KEY (family_id, reward_option_id) REFERENCES reward_options (family_id, id)
+) ENGINE=InnoDB;
+
+CREATE TABLE reward_ledger (                                 -- 只追加：累计奖励流水（获批入账 / 孩子用掉 / 家长核销）
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  family_id        BIGINT UNSIGNED NOT NULL,
+  child_id         BIGINT UNSIGNED NOT NULL,
+  reward_option_id BIGINT UNSIGNED NOT NULL,
+  kind             ENUM('grant','consume','writeoff') NOT NULL,
+  delta            INT          NOT NULL,
+  balance_after    INT          NOT NULL,
+  redemption_id    BIGINT UNSIGNED NULL,                     -- grant 必填：来自哪张获批的兑换单
+  actor_parent_id  BIGINT UNSIGNED NULL,                     -- writeoff 必填：核销的家长
+  reason           VARCHAR(300) NULL,                        -- 用掉 / 核销的说明（旧系统 ≤ 300 字）
+  local_date       DATE         NOT NULL,
+  created_at       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_reward_ledger_redemption (redemption_id),
+  KEY ix_reward_ledger_child (child_id, reward_option_id, id),
+  KEY ix_reward_ledger_family (family_id, child_id),
+  CONSTRAINT fk_reward_ledger_child      FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_reward_ledger_option     FOREIGN KEY (family_id, reward_option_id) REFERENCES reward_options (family_id, id),
+  CONSTRAINT fk_reward_ledger_redemption FOREIGN KEY (redemption_id) REFERENCES redemptions (id),
+  CONSTRAINT fk_reward_ledger_parent     FOREIGN KEY (family_id, actor_parent_id) REFERENCES parents (family_id, id),
+  CONSTRAINT ck_reward_ledger_shape CHECK (
+       (kind = 'grant'    AND delta > 0 AND redemption_id IS NOT NULL AND actor_parent_id IS NULL)
+    OR (kind = 'consume'  AND delta < 0 AND redemption_id IS NULL AND actor_parent_id IS NULL)
+    OR (kind = 'writeoff' AND delta < 0 AND redemption_id IS NULL AND actor_parent_id IS NOT NULL)),
+  CONSTRAINT ck_reward_ledger_balance CHECK (balance_after >= 0)
+) ENGINE=InnoDB;
+
 -- ---------------------------------------------------------------------
--- 6. 伙伴 companion（5 张）
+-- 6. 伙伴 companion（7 张）
 -- ---------------------------------------------------------------------
-CREATE TABLE pet_tiers (                                     -- 档位：价格、领养门槛、等级曲线（系统管理员可配置）
+CREATE TABLE pet_tiers (                                     -- 档位：默认价格、是否全站唯一、等级曲线（旧系统 5 档，系统管理员可配置）；领养门槛是全站一个设置 companion.unlock_stars
   id                  SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name                VARCHAR(20)  NOT NULL,
   sort_order          SMALLINT     NOT NULL,
   star_price          INT UNSIGNED NOT NULL,
   fragment_price      INT UNSIGNED NOT NULL,
-  adoption_threshold  INT UNSIGNED NOT NULL DEFAULT 0,       -- 历史累计“学习星”门槛
+  site_unique         TINYINT(1)   NOT NULL DEFAULT 0,       -- 唯一档：每个种类全站同时只能有一个孩子拥有（旧系统“全岛唯一”）
   max_level           TINYINT UNSIGNED NOT NULL DEFAULT 100, -- 与旧系统一致（用户 2026-10-22 决定）
   xp_base             SMALLINT UNSIGNED NOT NULL DEFAULT 2,  -- L→L+1 所需经验 = xp_base + xp_step × floor((L − 1) / 10) + floor((L − 1)² / xp_quad_div)
   xp_step             SMALLINT UNSIGNED NOT NULL DEFAULT 1,  -- 默认 2 / 1 / 200 = 旧系统 petUpgradeCost 曲线（1→100 级共 2191 经验）
@@ -1213,7 +1410,6 @@ CREATE TABLE pet_tiers (                                     -- 档位：价格�
   UNIQUE KEY uq_pet_tiers_name (name),
   CONSTRAINT fk_pet_tiers_admin FOREIGN KEY (updated_by_admin_id) REFERENCES admin_accounts (id),
   CONSTRAINT ck_pet_tiers_prices CHECK (star_price BETWEEN 1 AND 5000 AND fragment_price BETWEEN 1 AND 20000),
-  CONSTRAINT ck_pet_tiers_threshold CHECK (adoption_threshold <= 100000),
   CONSTRAINT ck_pet_tiers_curve CHECK (max_level BETWEEN 2 AND 100 AND xp_base BETWEEN 1 AND 1000 AND xp_step <= 1000 AND xp_quad_div BETWEEN 1 AND 10000)
 ) ENGINE=InnoDB;
 
@@ -1230,17 +1426,23 @@ CREATE TABLE pet_tier_stages (                               -- 成长阶段（�
   CONSTRAINT ck_pet_tier_stages_actions CHECK (JSON_TYPE(unlocked_actions) = 'ARRAY')
 ) ENGINE=InnoDB;
 
-CREATE TABLE pet_species (                                   -- 伙伴种类：AI 工作室设计 → 审核 → 上架
+CREATE TABLE pet_species (                                   -- 伙伴种类：AI 工作室设计 → 审核 → 上架；或由 seeds:apply 从 seeds/pets/ 导入旧系统任天堂宠物（ADR 0021）
   id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   species_key          VARCHAR(48)  NOT NULL,
   name                 VARCHAR(20)  NOT NULL,
   description          VARCHAR(200) NOT NULL,
+  origin               ENUM('studio','seed') NOT NULL DEFAULT 'studio',
   tier_id              SMALLINT UNSIGNED NOT NULL,
+  star_price           INT UNSIGNED NULL,                    -- NULL = 用档位价（旧系统每个种类可单独定价）
+  fragment_price       INT UNSIGNED NULL,
+  star_enabled         TINYINT(1)   NOT NULL DEFAULT 1,      -- 可用星星领养
+  fragment_enabled     TINYINT(1)   NOT NULL DEFAULT 1,      -- 可用碎片领养
+  gift_enabled         TINYINT(1)   NOT NULL DEFAULT 1,      -- 可赠送
   status               ENUM('draft','in_review','published','unlisted') NOT NULL DEFAULT 'draft',
   design               JSON         NOT NULL,                -- 基础形象、各阶段图片、动作动画、台词与音频的素材 ID
   voice_id             VARCHAR(48)  NULL,
   voice_pitch          DECIMAL(3,2) NOT NULL DEFAULT 1.00,
-  created_by_admin_id  BIGINT UNSIGNED NOT NULL,
+  created_by_admin_id  BIGINT UNSIGNED NULL,                 -- seed 种类为 NULL
   reviewed_by_admin_id BIGINT UNSIGNED NULL,
   published_at         DATETIME(3)  NULL,
   version              INT UNSIGNED NOT NULL DEFAULT 1,
@@ -1253,8 +1455,12 @@ CREATE TABLE pet_species (                                   -- 伙伴种类：A
   CONSTRAINT fk_pet_species_reviewer FOREIGN KEY (reviewed_by_admin_id) REFERENCES admin_accounts (id),
   CONSTRAINT ck_pet_species_key CHECK (REGEXP_LIKE(species_key, '^[a-z0-9]+(-[a-z0-9]+)*$', 'c')),
   CONSTRAINT ck_pet_species_pitch CHECK (voice_pitch BETWEEN 0.50 AND 2.00),
+  CONSTRAINT ck_pet_species_origin CHECK ((origin = 'studio') = (created_by_admin_id IS NOT NULL)),
+  CONSTRAINT ck_pet_species_prices CHECK ((star_price IS NULL OR star_price BETWEEN 1 AND 5000)
+                                      AND (fragment_price IS NULL OR fragment_price BETWEEN 1 AND 20000)
+                                      AND (star_enabled = 1 OR fragment_enabled = 1)),
   CONSTRAINT ck_pet_species_published CHECK ((status IN ('published','unlisted')) = (published_at IS NOT NULL)
-                                             AND (status NOT IN ('published','unlisted') OR reviewed_by_admin_id IS NOT NULL))
+                                             AND (status NOT IN ('published','unlisted') OR reviewed_by_admin_id IS NOT NULL OR origin = 'seed'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE pet_dens (                                      -- 每个孩子的营地：基础格数来自系统设置，这里记录已扩建格数
@@ -1267,45 +1473,101 @@ CREATE TABLE pet_dens (                                      -- 每个孩子的�
   CONSTRAINT ck_pet_dens_extra CHECK (extra_slots <= 10)
 ) ENGINE=InnoDB;
 
-CREATE TABLE child_pets (                                    -- 孩子拥有的伙伴：不可删除、不可转赠、不可退订
-  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  family_id        BIGINT UNSIGNED NOT NULL,
-  child_id         BIGINT UNSIGNED NOT NULL,
-  species_id       BIGINT UNSIGNED NOT NULL,
-  level            TINYINT UNSIGNED NOT NULL DEFAULT 1,
-  xp               INT UNSIGNED NOT NULL DEFAULT 0,          -- 当前等级内已积累的经验
-  total_xp         INT UNSIGNED NOT NULL DEFAULT 0,
-  is_companion     TINYINT(1)   NOT NULL DEFAULT 0,          -- 跟随伙伴（每个孩子最多 1 只）
-  companion_key    TINYINT(1)   AS (IF(is_companion = 1, 1, NULL)) STORED,
-  adopted_with     ENUM('star','fragment') NOT NULL,
-  price_paid       INT UNSIGNED NOT NULL,
-  adopt_ledger_id  BIGINT UNSIGNED NOT NULL,
-  adopted_at       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+CREATE TABLE child_pets (                                    -- 孩子拥有的伙伴：不物理删除；退订、赠出只改状态（旧系统规则，ADR 0020）
+  id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  family_id          BIGINT UNSIGNED NOT NULL,
+  child_id           BIGINT UNSIGNED NOT NULL,
+  species_id         BIGINT UNSIGNED NOT NULL,
+  nickname           VARCHAR(12)  NULL,                      -- 孩子起的名字（1–12 字，过滤个人信息；NULL = 用种类名）
+  affection          TINYINT UNSIGNED NOT NULL DEFAULT 0,    -- 亲密度 0–100：摸摸 / 点心 / 玩耍每样每天 +1，只展示，无奖励
+  level              TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  xp                 INT UNSIGNED NOT NULL DEFAULT 0,        -- 当前等级内已积累的经验
+  total_xp           INT UNSIGNED NOT NULL DEFAULT 0,
+  status             ENUM('active','refunded','gifted') NOT NULL DEFAULT 'active',
+  is_companion       TINYINT(1)   NOT NULL DEFAULT 0,        -- 跟随伙伴（每个孩子最多 1 只）
+  companion_key      TINYINT(1)   AS (IF(is_companion = 1, 1, NULL)) STORED,
+  active_species_id  BIGINT UNSIGNED AS (IF(status = 'active', species_id, NULL)) STORED,
+  site_unique        TINYINT(1)   NOT NULL DEFAULT 0,        -- 领养或受赠时从档位复制
+  unique_species_id  BIGINT UNSIGNED AS (IF(status = 'active' AND site_unique = 1, species_id, NULL)) STORED,
+  acquired_via       ENUM('adopt','gift') NOT NULL DEFAULT 'adopt',
+  adopted_with       ENUM('star','fragment') NOT NULL,       -- 受赠的伙伴沿用赠出方的记录
+  price_paid         INT UNSIGNED NOT NULL,
+  adopt_ledger_id    BIGINT UNSIGNED NULL,                   -- 领养流水（受赠为 NULL）
+  gifted_from_pet_id BIGINT UNSIGNED NULL,                   -- 受赠：赠出方那一行（等级、经验、亲密度、名字随之复制）
+  refund_ledger_id   BIGINT UNSIGNED NULL,                   -- 退订返还一半的流水
+  adopted_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  ended_at           DATETIME(3)  NULL,                      -- 退订或赠出的时间
   PRIMARY KEY (id),
-  UNIQUE KEY uq_child_pets_species (child_id, species_id),   -- 每种每人 1 只
+  UNIQUE KEY uq_child_pets_species (child_id, active_species_id),   -- 每种每人同时 1 只
+  UNIQUE KEY uq_child_pets_unique (unique_species_id),              -- 唯一档全站同时 1 只
   UNIQUE KEY uq_child_pets_companion (child_id, companion_key),
   UNIQUE KEY uq_child_pets_ledger (adopt_ledger_id),
+  UNIQUE KEY uq_child_pets_refund (refund_ledger_id),
+  UNIQUE KEY uq_child_pets_gift (gifted_from_pet_id),
+  UNIQUE KEY uq_child_pets_child_id (child_id, id),
   KEY ix_child_pets_family (family_id, child_id),
   CONSTRAINT fk_child_pets_child   FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
   CONSTRAINT fk_child_pets_species FOREIGN KEY (species_id) REFERENCES pet_species (id),
   CONSTRAINT fk_child_pets_ledger  FOREIGN KEY (adopt_ledger_id) REFERENCES ledger (id),
+  CONSTRAINT fk_child_pets_refund  FOREIGN KEY (refund_ledger_id) REFERENCES ledger (id),
+  CONSTRAINT fk_child_pets_gift    FOREIGN KEY (gifted_from_pet_id) REFERENCES child_pets (id),
   CONSTRAINT ck_child_pets_level CHECK (level BETWEEN 1 AND 100 AND xp <= total_xp),
-  CONSTRAINT ck_child_pets_price CHECK (price_paid >= 1)
+  CONSTRAINT ck_child_pets_price CHECK (price_paid >= 1),
+  CONSTRAINT ck_child_pets_nickname CHECK (nickname IS NULL OR CHAR_LENGTH(TRIM(nickname)) BETWEEN 1 AND 12),
+  CONSTRAINT ck_child_pets_affection CHECK (affection <= 100),
+  CONSTRAINT ck_child_pets_source CHECK ((acquired_via = 'adopt') = (adopt_ledger_id IS NOT NULL)
+                                     AND (acquired_via = 'gift') = (gifted_from_pet_id IS NOT NULL)),
+  CONSTRAINT ck_child_pets_status CHECK ((status = 'active') = (ended_at IS NULL)
+                                     AND (status = 'refunded') = (refund_ledger_id IS NOT NULL)
+                                     AND (status <> 'refunded' OR acquired_via = 'adopt')      -- 受赠的伙伴不能退订（防止绕过每日赠星上限）
+                                     AND (is_companion = 0 OR status = 'active'))
+) ENGINE=InnoDB;
+
+CREATE TABLE pet_interactions (                              -- 只追加：摸摸 / 点心 / 玩耍（旧系统）：每只伙伴每种动作每个本地日一次，亲密度 +1
+  child_id     BIGINT UNSIGNED NOT NULL,
+  child_pet_id BIGINT UNSIGNED NOT NULL,
+  local_date   DATE         NOT NULL,
+  action       ENUM('pet','feed','play') NOT NULL,
+  family_id    BIGINT UNSIGNED NOT NULL,
+  created_at   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (child_pet_id, local_date, action),
+  KEY ix_pet_interactions_child (child_id, local_date),
+  CONSTRAINT fk_pet_interactions_child FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_pet_interactions_pet   FOREIGN KEY (child_id, child_pet_id) REFERENCES child_pets (child_id, id)
+) ENGINE=InnoDB;
+
+CREATE TABLE pet_gifts (                                     -- 只追加：赠送伙伴（旧系统）；跨家庭条件与赠星相同
+  id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  from_family_id BIGINT UNSIGNED NOT NULL,
+  from_child_id  BIGINT UNSIGNED NOT NULL,
+  to_family_id   BIGINT UNSIGNED NOT NULL,
+  to_child_id    BIGINT UNSIGNED NOT NULL,
+  from_pet_id    BIGINT UNSIGNED NOT NULL,
+  to_pet_id      BIGINT UNSIGNED NOT NULL,
+  friendship_id  BIGINT UNSIGNED NULL,                       -- 跨家庭时必填
+  created_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_pet_gifts_from (from_pet_id),
+  UNIQUE KEY uq_pet_gifts_to (to_pet_id),
+  CONSTRAINT fk_pet_gifts_from      FOREIGN KEY (from_family_id, from_child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_pet_gifts_to        FOREIGN KEY (to_family_id, to_child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_pet_gifts_from_pet  FOREIGN KEY (from_child_id, from_pet_id) REFERENCES child_pets (child_id, id),
+  CONSTRAINT fk_pet_gifts_to_pet    FOREIGN KEY (to_child_id, to_pet_id) REFERENCES child_pets (child_id, id),
+  CONSTRAINT ck_pet_gifts_self CHECK (from_child_id <> to_child_id),
+  CONSTRAINT ck_pet_gifts_cross CHECK ((from_family_id = to_family_id) = (friendship_id IS NULL))
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
 -- 7. 呀哈哈发现 discovery（5 张）
 -- ---------------------------------------------------------------------
-CREATE TABLE yahaha_sets (                                   -- 图鉴套组：集齐一套奖励星星
+CREATE TABLE yahaha_sets (                                   -- 图鉴套组（集齐不发星星：呀哈哈不发奖励星，旧系统规则）
   id          SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name        VARCHAR(20)  NOT NULL,
-  bonus_stars TINYINT UNSIGNED NOT NULL DEFAULT 5,
   sort_order  SMALLINT     NOT NULL,
   status      ENUM('draft','listed','unlisted') NOT NULL DEFAULT 'draft',
   version     INT UNSIGNED NOT NULL DEFAULT 1,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_yahaha_sets_name (name),
-  CONSTRAINT ck_yahaha_sets_bonus CHECK (bonus_stars BETWEEN 1 AND 50)
+  UNIQUE KEY uq_yahaha_sets_name (name)
 ) ENGINE=InnoDB;
 
 CREATE TABLE yahaha_styles (                                 -- 呀哈哈家族的款式
@@ -1397,6 +1659,7 @@ CREATE TABLE hiding_spots (                                  -- 通关时由服�
   attempt_id  BIGINT UNSIGNED NULL,                          -- 通关的 3 个藏匿点
   word_task_id BIGINT UNSIGNED NULL,                         -- 单词本闯关/考试 ≥80 分的随机呀哈哈（中签才放置，ADR 0019）
   word_milestone_no SMALLINT UNSIGNED NULL,                  -- 单词本每首次学会 5 个词必得 1 个（第 n 个里程碑）
+  unit_milestone_key VARCHAR(100) NULL,                      -- 单元首次全 3 星级必得 1 个（默认规则，旧系统；值为 课程:unit_key）
   spot_no     TINYINT UNSIGNED NOT NULL,                     -- 1..3（单词本来源固定为 1）
   spot_kind   VARCHAR(16)  NOT NULL,                         -- leaf / rock / cloud …（来自关卡场景）
   local_date  DATE         NOT NULL,
@@ -1409,6 +1672,7 @@ CREATE TABLE hiding_spots (                                  -- 通关时由服�
   UNIQUE KEY uq_hiding_spots_attempt (attempt_id, spot_no),
   UNIQUE KEY uq_hiding_spots_word_task (word_task_id, spot_no),
   UNIQUE KEY uq_hiding_spots_word_milestone (child_id, word_milestone_no),
+  UNIQUE KEY uq_hiding_spots_unit_milestone (child_id, unit_milestone_key),
   UNIQUE KEY uq_hiding_spots_daily (child_id, local_date, daily_seq),
   UNIQUE KEY uq_hiding_spots_id_style (id, style_id),           -- 供图鉴复合外键：图鉴款式必须等于藏匿点里的款式
   KEY ix_hiding_spots_child (child_id, revealed_at),
@@ -1418,8 +1682,9 @@ CREATE TABLE hiding_spots (                                  -- 通关时由服�
   CONSTRAINT fk_hiding_spots_style   FOREIGN KEY (style_id) REFERENCES yahaha_styles (id),
   CONSTRAINT fk_hiding_spots_rule    FOREIGN KEY (rule_id) REFERENCES drop_rules (id),
   CONSTRAINT ck_hiding_spots_no CHECK (spot_no BETWEEN 1 AND 3),
-  CONSTRAINT ck_hiding_spots_source CHECK ((attempt_id IS NOT NULL) + (word_task_id IS NOT NULL) + (word_milestone_no IS NOT NULL) = 1),
-  CONSTRAINT ck_hiding_spots_word CHECK (attempt_id IS NOT NULL OR (spot_no = 1 AND style_id IS NOT NULL)),  -- 单词本来源只放有呀哈哈的藏匿点
+  CONSTRAINT ck_hiding_spots_source CHECK ((attempt_id IS NOT NULL) + (word_task_id IS NOT NULL) + (word_milestone_no IS NOT NULL)
+                                         + (unit_milestone_key IS NOT NULL) = 1),
+  CONSTRAINT ck_hiding_spots_word CHECK (attempt_id IS NOT NULL OR (spot_no = 1 AND style_id IS NOT NULL)),  -- 单词本与单元里程碑来源只放有呀哈哈的藏匿点
   CONSTRAINT ck_hiding_spots_milestone CHECK (word_milestone_no IS NULL OR word_milestone_no >= 1),
   CONSTRAINT ck_hiding_spots_seq CHECK ((style_id IS NULL) = (daily_seq IS NULL) AND (daily_seq IS NULL OR daily_seq BETWEEN 1 AND 10)),
   CONSTRAINT ck_hiding_spots_rule CHECK (rule_id IS NULL OR style_id IS NOT NULL),
@@ -1445,7 +1710,7 @@ CREATE TABLE yahaha_finds (                                  -- 只追加：图�
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 8. 社交 social（5 张）
+-- 8. 社交 social（6 张：含孩子与家长的系统通知）
 -- ---------------------------------------------------------------------
 CREATE TABLE family_friendships (
   id                     BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1505,7 +1770,8 @@ CREATE TABLE messages (
   recipient_child_id  BIGINT UNSIGNED NULL,
   recipient_parent_id BIGINT UNSIGNED NULL,
   kind                ENUM('text','phrase','emoji') NOT NULL,
-  body                VARCHAR(200) NULL,                     -- 仅家庭内 text
+  subject             VARCHAR(60)  NULL,                     -- 仅家庭内 text：信件标题（旧系统 ≤ 60 字，可空）
+  body                VARCHAR(500) NULL,                     -- 仅家庭内 text：信件内容（旧系统 ≤ 500 字）
   phrase_key          VARCHAR(48)  NULL,                     -- 仓库 seeds/phrases/phrases.json 的键
   emoji_key           VARCHAR(32)  NULL,                     -- 仓库 seeds/phrases/emoji.json 白名单的键
   created_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -1522,12 +1788,32 @@ CREATE TABLE messages (
   CONSTRAINT ck_messages_one_sender    CHECK ((sender_child_id IS NULL) <> (sender_parent_id IS NULL)),
   CONSTRAINT ck_messages_one_recipient CHECK ((recipient_child_id IS NULL) <> (recipient_parent_id IS NULL)),
   CONSTRAINT ck_messages_kind CHECK (
-       (kind = 'text'   AND body IS NOT NULL AND CHAR_LENGTH(TRIM(body)) BETWEEN 1 AND 200 AND phrase_key IS NULL AND emoji_key IS NULL)
-    OR (kind = 'phrase' AND phrase_key IS NOT NULL AND body IS NULL AND emoji_key IS NULL)
-    OR (kind = 'emoji'  AND emoji_key IS NOT NULL AND body IS NULL AND phrase_key IS NULL)),
+       (kind = 'text'   AND body IS NOT NULL AND CHAR_LENGTH(TRIM(body)) BETWEEN 1 AND 500 AND phrase_key IS NULL AND emoji_key IS NULL
+          AND (subject IS NULL OR CHAR_LENGTH(TRIM(subject)) BETWEEN 1 AND 60))
+    OR (kind = 'phrase' AND phrase_key IS NOT NULL AND body IS NULL AND subject IS NULL AND emoji_key IS NULL)
+    OR (kind = 'emoji'  AND emoji_key IS NOT NULL AND body IS NULL AND subject IS NULL AND phrase_key IS NULL)),
   CONSTRAINT ck_messages_cross_family CHECK (
        sender_family_id = recipient_family_id
     OR (kind <> 'text' AND sender_child_id IS NOT NULL AND recipient_child_id IS NOT NULL))
+) ENGINE=InnoDB;
+
+CREATE TABLE notifications (                                 -- 信箱里的系统通知（旧系统 system 信件）：兑换结果、核销、加减星、伙伴赠送与退订等
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  family_id   BIGINT UNSIGNED NOT NULL,
+  child_id    BIGINT UNSIGNED NULL,
+  parent_id   BIGINT UNSIGNED NULL,
+  kind        ENUM('redemption','reward_writeoff','stars_adjusted','pet_gift','pet_refund','den_expand','system') NOT NULL,
+  title       VARCHAR(60)  NOT NULL,
+  body        VARCHAR(500) NOT NULL,
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  read_at     DATETIME(3)  NULL,
+  PRIMARY KEY (id),
+  KEY ix_notifications_child (child_id, read_at, created_at),
+  KEY ix_notifications_parent (parent_id, read_at, created_at),
+  CONSTRAINT fk_notifications_child  FOREIGN KEY (family_id, child_id) REFERENCES children (family_id, id),
+  CONSTRAINT fk_notifications_parent FOREIGN KEY (family_id, parent_id) REFERENCES parents (family_id, id),
+  CONSTRAINT ck_notifications_recipient CHECK ((child_id IS NULL) <> (parent_id IS NULL)),
+  CONSTRAINT ck_notifications_text CHECK (CHAR_LENGTH(TRIM(title)) BETWEEN 1 AND 60 AND CHAR_LENGTH(TRIM(body)) BETWEEN 1 AND 500)
 ) ENGINE=InnoDB;
 
 CREATE TABLE blocks (
@@ -1730,11 +2016,12 @@ CREATE TABLE system_settings (
   PRIMARY KEY (setting_key),
   CONSTRAINT fk_system_settings_admin FOREIGN KEY (updated_by_admin_id) REFERENCES admin_accounts (id),
   CONSTRAINT ck_system_settings_key CHECK (setting_key IN (
-    'ai.enabled','ai.model','registration.mode',
-    'discovery.enabled','discovery.spot_probability_pct','discovery.daily_cap','discovery.rarity_weights','discovery.milestone_bonus',
-    'companion.den_base_slots','companion.den_slot_prices','companion.fragment_pass_scope',
+    'ai.enabled',
+    'discovery.enabled','discovery.spot_probability_pct','discovery.daily_cap','discovery.rarity_weights',
+    'discovery.collection_cap','discovery.unit_milestone',
+    'companion.den_base_slots','companion.den_slot_prices','companion.unlock_stars',
     'studio.default_monthly_cap_fen','studio.unit_prices','studio.voices',
-    'learning.play_ttl_minutes','content.allow_self_review','content.unit_levels','wordbook.random',
+    'content.allow_self_review','content.unit_levels','wordbook.random',
     'agents.limits','agents.page_routes','agents.stats_min_group')),
   -- 规则边界由数据库保证（AI 或界面填错都写不进去）
   CONSTRAINT ck_system_settings_probability CHECK (setting_key <> 'discovery.spot_probability_pct'
@@ -1743,8 +2030,14 @@ CREATE TABLE system_settings (
     OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 1 AND 10)),
   CONSTRAINT ck_system_settings_den_slots CHECK (setting_key <> 'companion.den_base_slots'
     OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 1 AND 10)),
-  CONSTRAINT ck_system_settings_play_ttl CHECK (setting_key <> 'learning.play_ttl_minutes'
-    OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 30 AND 720)),
+  CONSTRAINT ck_system_settings_den_prices CHECK (setting_key <> 'companion.den_slot_prices'   -- 扩建价格阶梯：最多 10 次（旧系统）
+    OR (JSON_TYPE(value) = 'ARRAY' AND JSON_LENGTH(value) BETWEEN 1 AND 10)),
+  CONSTRAINT ck_system_settings_unlock CHECK (setting_key <> 'companion.unlock_stars'          -- 领养门槛：历史累计学习星（旧系统全站一个门槛，默认 0）
+    OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 0 AND 1000000)),
+  CONSTRAINT ck_system_settings_collection CHECK (setting_key <> 'discovery.collection_cap'     -- 森林口袋收藏上限（旧系统默认 1000，1–100000）
+    OR (JSON_TYPE(value) = 'INTEGER' AND JSON_EXTRACT(value, '$') BETWEEN 1 AND 100000)),
+  CONSTRAINT ck_system_settings_unit_milestone CHECK (setting_key <> 'discovery.unit_milestone'
+    OR JSON_TYPE(value) = 'BOOLEAN'),
   CONSTRAINT ck_system_settings_unit_levels CHECK (setting_key <> 'content.unit_levels'   -- 每个单元的关卡数范围（Q26，默认 3–6）
     OR (JSON_TYPE(value) = 'OBJECT' AND JSON_TYPE(JSON_EXTRACT(value, '$.min')) = 'INTEGER' AND JSON_TYPE(JSON_EXTRACT(value, '$.max')) = 'INTEGER'
         AND JSON_EXTRACT(value, '$.min') BETWEEN 1 AND 12 AND JSON_EXTRACT(value, '$.max') BETWEEN JSON_EXTRACT(value, '$.min') AND 12)),
@@ -1789,32 +2082,36 @@ CREATE TABLE schema_migrations (                             -- 迁移工具记�
 
 INSERT INTO system_settings (setting_key, value) VALUES
   ('ai.enabled',                      CAST('true' AS JSON)),
-  ('ai.model',                        CAST('"default"' AS JSON)),
-  ('registration.mode',               CAST('"invite"' AS JSON)),
   ('discovery.enabled',               CAST('true' AS JSON)),
   ('discovery.spot_probability_pct',  CAST('20' AS JSON)),
   ('discovery.daily_cap',             CAST('3' AS JSON)),
   ('discovery.rarity_weights',        CAST('{"common":100,"uncommon":30,"rare":10,"legendary":2}' AS JSON)),
-  ('discovery.milestone_bonus',       CAST('{"10":3,"30":5,"100":10}' AS JSON)),
+  ('discovery.collection_cap',        CAST('1000' AS JSON)),
+  ('discovery.unit_milestone',        CAST('true' AS JSON)),
   ('companion.den_base_slots',        CAST('3' AS JSON)),
-  ('companion.den_slot_prices',       CAST('[30,60,120]' AS JSON)),
-  ('companion.fragment_pass_scope',   CAST('"per_level_per_day"' AS JSON)),
+  ('companion.den_slot_prices',       CAST('[10,20,100,200,500]' AS JSON)),
+  ('companion.unlock_stars',          CAST('0' AS JSON)),
   ('studio.default_monthly_cap_fen',  CAST('20000' AS JSON)),
-  ('studio.unit_prices',              CAST('{"llm_per_1k_tokens_fen":1,"image_fen":20,"ocr_page_fen":1,"tts_fen":0}' AS JSON)),
-  ('studio.voices',                   CAST('{"zh":"zh_CN-huayan-medium","en":"en_US-amy-medium"}' AS JSON)),
-  ('learning.play_ttl_minutes',       CAST('120' AS JSON)),
+  ('studio.unit_prices',              CAST('{"llm_per_1k_tokens_fen":1,"image_fen":20,"vision_page_fen":2,"tts_fen":0}' AS JSON)),
+  ('studio.voices',                   CAST('{"zh":{"model":"zh_CN-huayan-medium","speaker":0,"length_scale":1.0,"noise_scale":0.667,"noise_w":0.8,"sentence_silence":0.2},"en":{"model":"en_US-amy-medium","speaker":0,"length_scale":1.0,"noise_scale":0.667,"noise_w":0.8,"sentence_silence":0.2},"presets":[]}' AS JSON)),
   ('content.allow_self_review',       CAST('true' AS JSON)),
   ('content.unit_levels',             CAST('{"min":3,"max":6}' AS JSON)),
   ('wordbook.random',                 CAST('{"enabled":true,"probability_bps":2000,"daily_limit":2}' AS JSON)),
   ('agents.limits',                   CAST('{"max_steps":20,"child_max_steps":3,"max_pipeline_steps":6,"llm_timeout_s":60,"child_llm_timeout_s":20,"tool_timeout_s":30,"run_timeout_s":600,"child_run_timeout_s":25,"output_repair_attempts":1}' AS JSON)),
   ('agents.page_routes',              CAST('{"courses":"course-designer","pets":"art-designer","yahaha":"art-designer","rules":"event-planner","skills":"qa-reviewer","agents":"qa-reviewer","runs":"ops-analyst","stats":"ops-analyst"}' AS JSON)),
   ('agents.stats_min_group',          CAST('5' AS JSON));
--- 伙伴默认档位与成长阶段（开放问题 Q5、Q8：已默认，可调整；系统管理员在后台修改）
-INSERT INTO pet_tiers (id, name, sort_order, star_price, fragment_price, adoption_threshold) VALUES
-  (1, '初级', 1,  20,  40,   0),
-  (2, '中级', 2,  50, 100, 100),
-  (3, '高级', 3, 100, 200, 300),
-  (4, '稀有', 4, 200, 400, 600);
+-- 伙伴默认档位与成长阶段（开放问题 Q5、Q8：已决定（用户 2026-10-22），照旧系统 PET_TIERS；系统管理员可在后台修改）
+INSERT INTO pet_tiers (id, name, sort_order, star_price, fragment_price, site_unique) VALUES
+  (1, '初级', 1,  20,   80, 0),
+  (2, '中级', 2,  50,  160, 0),
+  (3, '高级', 3, 100,  320, 0),
+  (4, '稀有', 4, 250,  800, 0),
+  (5, '唯一', 5, 600, 2000, 1);
+-- 模型配置默认值（ADR 0022）：阿里云百炼；密钥由系统管理员在后台填写（加密保存），仓库与文档中永不出现
+INSERT INTO ai_providers (purpose, name, vendor, base_url, model, supports_tools, is_default) VALUES
+  ('chat',   '通义千问（聊天与文本）', '阿里云百炼', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus',   1, 1),
+  ('vision', '通义千问 VL（识图与文字识别）', '阿里云百炼', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-vl-max', 0, 1),
+  ('image',  '通义万相（图像生成）',   '阿里云百炼', 'https://dashscope.aliyuncs.com/api/v1',              'wanx2.1-t2i-turbo', 0, 1);
 INSERT INTO pet_tier_stages (tier_id, stage_no, name, min_level, unlocked_actions)
 SELECT t.id, s.stage_no, s.name, s.min_level, CAST(s.actions AS JSON)
 FROM pet_tiers t

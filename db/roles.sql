@@ -37,6 +37,11 @@ GRANT SELECT, INSERT ON xingya.units            TO 'xingya_app_role';   -- 单�
 GRANT SELECT, INSERT ON xingya.levels           TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.questions        TO 'xingya_app_role';
 GRANT SELECT, INSERT ON xingya.question_answers TO 'xingya_app_role';
+GRANT SELECT, INSERT ON xingya.learning_cards   TO 'xingya_app_role';   -- 学习卡随课程版本只追加
+GRANT SELECT, INSERT ON xingya.reward_ledger    TO 'xingya_app_role';   -- 累计奖励流水
+GRANT SELECT, INSERT ON xingya.hidden_reward_claims TO 'xingya_app_role';
+GRANT SELECT, INSERT ON xingya.pet_gifts        TO 'xingya_app_role';
+GRANT SELECT, INSERT ON xingya.pet_interactions TO 'xingya_app_role';
 -- (c) 列级更新：只允许改指定列
 GRANT SELECT, INSERT ON xingya.words        TO 'xingya_app_role';
 GRANT UPDATE (phonetic, audio_asset_id, status) ON xingya.words TO 'xingya_app_role';           -- 拼写 text 不可改
@@ -50,10 +55,13 @@ GRANT UPDATE (visibility, status) ON xingya.assets TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.families           TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.parents            TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.children           TO 'xingya_app_role';
-GRANT SELECT, UPDATE         ON xingya.admin_accounts     TO 'xingya_app_role';
+GRANT SELECT ON xingya.admin_accounts TO 'xingya_app_role';
+GRANT UPDATE (password_hash, failed_login_count, locked_until, password_changed_at) ON xingya.admin_accounts TO 'xingya_app_role';
+  -- 后台可改密码与登录锁定；TOTP 种子、用户名、状态只由运维命令（migrator：xingya admin:create / admin:reset-totp）修改
 GRANT SELECT, INSERT, UPDATE ON xingya.family_devices     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.courses            TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.course_drafts      TO 'xingya_app_role';
+GRANT SELECT, INSERT, UPDATE ON xingya.plays              TO 'xingya_app_role';   -- 作答不过期（旧系统），无 DELETE
 GRANT SELECT, INSERT, UPDATE ON xingya.level_progress     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.unit_progress      TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.review_items       TO 'xingya_app_role';
@@ -65,18 +73,26 @@ GRANT SELECT, INSERT, UPDATE ON xingya.shop_items         TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.child_items        TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.reward_options     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.redemptions        TO 'xingya_app_role';
+GRANT SELECT, INSERT, UPDATE ON xingya.reward_balances    TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.pet_tiers          TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.pet_tier_stages    TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.pet_species        TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.pet_dens           TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.child_pets         TO 'xingya_app_role';   -- 无 DELETE：伙伴不可物理删除
+GRANT SELECT, INSERT, UPDATE ON xingya.child_pets         TO 'xingya_app_role';   -- 无 DELETE：退订与赠出只改状态
+GRANT SELECT, INSERT ON xingya.secret_routes TO 'xingya_app_role';
+GRANT UPDATE (entry_ledger_id, entered_at, passed_at, reward_ledger_id) ON xingya.secret_routes TO 'xingya_app_role';  -- 发现记录不可改
 GRANT SELECT, INSERT, UPDATE ON xingya.yahaha_sets        TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.yahaha_styles      TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.drop_rules         TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.ai_jobs            TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.ai_budget_months   TO 'xingya_app_role';
+GRANT SELECT, INSERT, UPDATE ON xingya.ai_providers       TO 'xingya_app_role';   -- 停用而不删除；密钥列只写入密文
+GRANT SELECT, INSERT, UPDATE ON xingya.material_upload_links TO 'xingya_app_role'; -- 撤销而不删除
+GRANT SELECT, INSERT, UPDATE ON xingya.materials          TO 'xingya_app_role';   -- 软删除可恢复（旧系统），无 DELETE
 GRANT SELECT, INSERT, UPDATE ON xingya.family_friendships TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.messages           TO 'xingya_app_role';
+GRANT SELECT, INSERT ON xingya.notifications TO 'xingya_app_role';
+GRANT UPDATE (read_at) ON xingya.notifications TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.abuse_reports      TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.child_controls     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.usage_days         TO 'xingya_app_role';
@@ -100,7 +116,7 @@ GRANT SELECT, INSERT, UPDATE ON xingya.agent_budget_months TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE ON xingya.quick_tasks         TO 'xingya_app_role';                       -- 归档而不删除
 GRANT SELECT, INSERT, UPDATE ON xingya.agent_runs          TO 'xingya_app_role';
 GRANT SELECT, INSERT, DELETE ON xingya.agent_run_steps     TO 'xingya_app_role';                       -- 不可改；180 天保留期后删除
--- (e) 可删（会话、令牌、过期数据清理、取消覆盖/屏蔽、未完成作答、资料）
+-- (e) 可删（会话、令牌、过期数据清理、取消覆盖/屏蔽、单词本词条）
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.sessions             TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.auth_tokens          TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.idempotency_requests TO 'xingya_app_role';
@@ -108,9 +124,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.ai_chat_usage        TO 'xingya_a
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.email_outbox         TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.course_overrides     TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.blocks               TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.plays                TO 'xingya_app_role';
 GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.word_entries         TO 'xingya_app_role';   -- 单词本词条可删除（词身份保留）
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.materials            TO 'xingya_app_role';
 
 CREATE USER IF NOT EXISTS 'xingya_app'@'localhost'      ACCOUNT LOCK;
 CREATE USER IF NOT EXISTS 'xingya_migrator'@'localhost' ACCOUNT LOCK;

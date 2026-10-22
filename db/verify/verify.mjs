@@ -38,7 +38,7 @@ await root.query('DROP DATABASE xingya');
 await root.query(SQL);
 const fp2 = await fingerprint(); const c2 = await counts();
 ok('从空库应用两次结构指纹一致', fp1 === fp2, `${fp1.slice(0, 12)} / ${fp2.slice(0, 12)}`);
-ok('表数=72', c2.tables === 72, JSON.stringify(c2));
+ok('表数=82', c2.tables === 82, JSON.stringify(c2));
 { const [miss] = await root.query(`SELECT table_name t FROM information_schema.tables WHERE table_schema='xingya' AND table_name NOT IN (SELECT Table_name FROM mysql.tables_priv WHERE Db='xingya' AND User='xingya_app_role')`);
   ok('授权全覆盖：每张表都有应用角色授权', miss.length === 0, JSON.stringify(miss)); }
 
@@ -78,6 +78,18 @@ await expectErr('复合外键：会话的孩子必须属于同一家庭', app, `
 await expectErr('CHECK：PIN 登录必须在家庭设备上', app, `INSERT INTO sessions (token_hash,principal,family_id,child_id,login_method,expires_at) VALUES (UNHEX(SHA2('t2',256)),'child',1,1,'pin',NOW()+INTERVAL 1 DAY)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('家庭设备 + PIN 会话', app, `INSERT INTO family_devices (id,family_id,token_hash,label,created_by_parent_id,expires_at) VALUES (1,1,UNHEX(SHA2('d1',256)),'客厅平板',1,NOW()+INTERVAL 365 DAY);
   INSERT INTO sessions (token_hash,principal,family_id,child_id,family_device_id,login_method,expires_at) VALUES (UNHEX(SHA2('t3',256)),'child',1,1,1,'pin',NOW()+INTERVAL 8 HOUR)`);
+// 4b) 孩子自改昵称与偏好、系统管理员登录锁定与改密码、注册码绑定邮箱（ADR 0020，用户 2026-10-22）
+await expectOk('孩子昵称 24 字以内（孩子可自改，旧系统）、偏好存服务端', app, `UPDATE children SET nickname='${'星'.repeat(24)}', pref_sound=0, pref_reduced_motion=1, version=version+1 WHERE id=2`);
+await expectErr('CHECK：孩子昵称不超过 24 字', app, `UPDATE children SET nickname='${'星'.repeat(25)}' WHERE id=2`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_DATA_TOO_LONG']);
+await expectOk('app 可改系统管理员密码并记录时间', app, `UPDATE admin_accounts SET password_hash='h2', password_changed_at=NOW(3) WHERE id=1`);
+await expectOk('app 记录登录失败与 15 分钟锁定', app, `UPDATE admin_accounts SET failed_login_count=5, locked_until=NOW(3)+INTERVAL 15 MINUTE WHERE id=1`);
+await expectErr('CHECK：系统管理员连续失败计数不超过 5（第 5 次即锁定并清零）', app, `UPDATE admin_accounts SET failed_login_count=6 WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('权限：app 不能改 TOTP 种子（只有 xingya admin:reset-totp）', app, `UPDATE admin_accounts SET totp_secret_enc=X'01' WHERE id=1`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
+await expectErr('权限：app 不能建系统管理员', app, `INSERT INTO admin_accounts (username,password_hash,totp_secret_enc) VALUES ('x','h',X'00')`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectOk('migrator 重置 TOTP（运维命令 admin:reset-totp）', mig, `UPDATE admin_accounts SET totp_secret_enc=X'02', totp_reset_at=NOW(3), failed_login_count=0, locked_until=NULL WHERE id=1`);
+const signup = (h, email) => `INSERT INTO auth_tokens (purpose,token_hash,email,created_by_admin_id,expires_at) VALUES ('family_signup',UNHEX(SHA2('${h}',256)),${email},1,NOW()+INTERVAL 7 DAY)`;
+await expectOk('注册码：绑定邮箱（只有该邮箱能注册）与不绑定各一个', app, `${signup('s1', "'mom@x.com'")}; ${signup('s2', 'NULL')}`);
+await expectErr('CHECK：注册码绑定的邮箱必须小写', app, signup('s3', "'Mom@X.com'"), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 
 // 5) AI 工作室：任务队列并发上限、本机进程互斥、预算、素材
 const job = (id, st, slot, local = 0) => `INSERT INTO ai_jobs (id,kind,status,running_slot,needs_local,params,budget_month,started_at) VALUES (${id},'agent_run','${st}',${slot},${local},'{}','2026-10',${st === 'running' ? 'NOW(3)' : 'NULL'})`;
@@ -94,6 +106,20 @@ await expectOk('素材入库', app, `INSERT INTO assets (id,kind,oss_key,sha256,
 await expectErr('CHECK：图片 ≤ 300 KB', app, `INSERT INTO assets (kind,oss_key,sha256,mime,bytes,source,prompt) VALUES ('image','pub/big.webp',UNHEX(SHA2('b',256)),'image/webp',400000,'upload',NULL)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：AI 图片必须记录提示词', app, `INSERT INTO assets (kind,oss_key,sha256,mime,bytes,source) VALUES ('image','pub/np.webp',UNHEX(SHA2('np',256)),'image/webp',100,'ai_image')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('权限：app 不能改素材的 OSS 路径（列级授权）', app, `UPDATE assets SET oss_key='x' WHERE id=1`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
+// 5b) 模型配置（ADR 0022）与扫码上传资料（旧系统）
+{ const [[pv]] = await app.query(`SELECT COUNT(*) n, SUM(is_default) d, SUM(api_key_enc IS NULL) nokey, GROUP_CONCAT(purpose ORDER BY purpose) ps, MIN(vendor) v FROM ai_providers`);
+  ok('默认模型配置 3 条：聊天 / 视觉 / 图像各一个默认，阿里云百炼，密钥未填', Number(pv.n) === 3 && Number(pv.d) === 3 && Number(pv.nokey) === 3 && pv.ps === 'chat,vision,image' && pv.v === '阿里云百炼', JSON.stringify(pv)); }
+await expectOk('新增聊天模型配置（孩子可切换），密钥以密文保存', app, `INSERT INTO ai_providers (purpose,name,vendor,base_url,model,api_key_enc,child_selectable) VALUES ('chat','备用聊天','某厂商','https://llm.example.com/v1','m-small',X'A1B2',1)`);
+await expectErr('UNIQUE：每种用途只有一个有效默认', app, `UPDATE ai_providers SET is_default=1 WHERE name='备用聊天'`, [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：模型服务地址必须是 https', app, `INSERT INTO ai_providers (purpose,name,vendor,base_url,model) VALUES ('vision','明文','x','http://ocr.example.com','m')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：只有聊天模型可以让孩子切换', app, `INSERT INTO ai_providers (purpose,name,vendor,base_url,model,child_selectable) VALUES ('image','图2','x','https://img.example.com','m',1)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('权限：模型配置不能物理删除（停用即可）', app, `DELETE FROM ai_providers WHERE name='备用聊天'`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectOk('扫码上传链接 72 小时有效', app, `INSERT INTO material_upload_links (id,token_hash,created_by_admin_id,expires_at) VALUES (1,UNHEX(SHA2('q1',256)),1,NOW(3)+INTERVAL 72 HOUR)`);
+await expectErr('CHECK：扫码上传链接最长 72 小时', app, `INSERT INTO material_upload_links (token_hash,created_by_admin_id,expires_at) VALUES (UNHEX(SHA2('q2',256)),1,NOW(3)+INTERVAL 73 HOUR)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('经扫码上传的资料', app, `INSERT INTO materials (id,title,kind,oss_key,sha256,bytes,uploaded_by_admin_id,upload_link_id) VALUES (1,'课本第 3 页','image','priv/m1.jpg',UNHEX(SHA2('m1',256)),300000,1,1)`);
+await expectErr('CHECK：软删除必须记录操作人', app, `UPDATE materials SET deleted_at=NOW(3) WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('软删除与恢复资料', app, `UPDATE materials SET deleted_at=NOW(3), deleted_by_admin_id=1 WHERE id=1; UPDATE materials SET deleted_at=NULL, deleted_by_admin_id=NULL WHERE id=1`);
+await expectErr('权限：资料不能物理删除（软删除可恢复）', app, `DELETE FROM materials WHERE id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 
 // 6) 词库与课程：草稿 → 发布（插入不可变版本行）
 await expectOk('词库：词与义项', app, `INSERT INTO words (id,subject,text,audio_asset_id,status) VALUES ('en.apple','english','apple',2,'active'),('en.pear','english','pear',NULL,'active'),('en.bat','english','bat',NULL,'active');
@@ -129,6 +155,19 @@ await expectErr('外键：单元必须属于已发布版本', app, `INSERT INTO 
 await expectOk('不同单元可以有相同的 level_key（u02 的 l01）', app, `INSERT INTO levels (id,course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (2,1,2,'l01',1,'认识动物','${SPOTS}')`);
 await expectErr('UNIQUE：单元内 level_key 唯一', app, `INSERT INTO levels (course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (1,1,'l01',2,'x','${SPOTS}')`, [], ['ER_DUP_ENTRY']);
 await expectErr('UNIQUE：单元内关卡顺序唯一', app, `INSERT INTO levels (course_version_id,unit_id,level_key,seq,title,hiding_spots) VALUES (1,1,'l09',1,'x','${SPOTS}')`, [], ['ER_DUP_ENTRY']);
+// 6c) 学习卡（先学后练，不计分；ADR 0020）与隐藏奖励关卡
+await expectOk('关卡学习卡 2 张 + 单元拓展卡 1 张 + 字母卡（例词）', app, `INSERT INTO learning_cards (course_version_id,unit_id,level_id,card_key,seq,kind,sense_id,content) VALUES
+    (1,1,1,'c01',1,'word','en.apple.fruit','{"word":"apple","meaning":"苹果","sentence":"I like apples.","sentenceMeaning":"我喜欢苹果。","imageAssetId":1,"audioAssetId":2}'),
+    (1,1,1,'c02',2,'letter',NULL,'{"upper":"A","lower":"a","examples":["apple","ant"]}'),
+    (1,1,NULL,'x01',1,'sentence',NULL,'{"sentence":"An apple a day.","sentenceMeaning":"一天一个苹果。"}')`);
+await expectErr('UNIQUE：同一关卡内学习卡键唯一', app, `INSERT INTO learning_cards (course_version_id,unit_id,level_id,card_key,seq,kind,content) VALUES (1,1,1,'c01',3,'word','{}')`, [], ['ER_DUP_ENTRY']);
+await expectErr('复合外键：学习卡的关卡必须属于同一单元', app, `INSERT INTO learning_cards (course_version_id,unit_id,level_id,card_key,seq,kind,content) VALUES (1,1,2,'c09',9,'word','{}')`, [], ['ER_NO_REFERENCED_ROW_2']);
+await expectErr('CHECK：字母卡例词最多 50 个', app, `INSERT INTO learning_cards (course_version_id,unit_id,level_id,card_key,seq,kind,content) VALUES (1,1,1,'c03',3,'letter',JSON_OBJECT('examples', JSON_ARRAY(${Array.from({ length: 51 }, (_, i) => `'w${i}'`).join(',')})))`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('不可变：app 不能修改已发布学习卡', app, `UPDATE learning_cards SET content='{}' WHERE card_key='c01'`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectOk('隐藏奖励关卡（宝箱 20 星）与题目来源、答后显示原文与中文', app, `INSERT INTO levels (id,course_version_id,unit_id,level_key,seq,title,hiding_spots,station,hidden_reward) VALUES (3,1,1,'l02',2,'水果宝箱','${SPOTS}','果园','fixed');
+  INSERT INTO questions (id,level_id,question_key,seq,type,scored,visible,source) VALUES (3,3,'q1',1,'listen_pick_image',1,'{"audioAssetId":2,"options":[{"id":"o1","imageAssetId":1}]}','一年级上册 第 12 页');
+  INSERT INTO question_answers (question_id,answer,reveal) VALUES (3,'{"optionId":"o1"}','{"transcript":"apple","zh":"苹果"}')`);
+await expectErr('CHECK：隐藏奖励只有翻倍或宝箱两种', app, `INSERT INTO levels (course_version_id,unit_id,level_key,seq,title,hiding_spots,hidden_reward) VALUES (1,1,'l03',3,'x','${SPOTS}','triple')`, [], ['ER_TRUNCATED_WRONG_VALUE_FOR_FIELD', 'WARN_DATA_TRUNCATED', 'ER_WRONG_VALUE_FOR_FIELD', 'ER_DATA_TOO_LONG']);
 await expectOk('发布另一门课程（一年级下册）的版本与单元', app, `INSERT INTO course_drafts (id,course_id,template_id,template_version,document,created_by_admin_id) VALUES (2,'en-g1-b','word-quest',1,'{}',1);
   UPDATE course_drafts SET check_passed=1, status='publishing', submitted_at=NOW(3), reviewed_by_admin_id=1 WHERE id=2;
   INSERT INTO course_versions (id,course_id,version_no,draft_id,template_id,template_version,title,published_by_admin_id) VALUES (2,'en-g1-b',1,2,'word-quest',1,'一年级下册',1);
@@ -140,7 +179,7 @@ await expectErr('不可变：app 不能修改已发布单元', app, `UPDATE unit
 await expectErr('不可变：app 不能删除已发布单元', app, `DELETE FROM units WHERE id=2`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('CHECK：题目可见部分不得含答案字段', app, `INSERT INTO questions (level_id,question_key,seq,type,scored,visible) VALUES (1,'q3',3,'listen_choose',1,'{"options":[],"answer":"o1"}')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：read_aloud 不能计分', app, `INSERT INTO questions (level_id,question_key,seq,type,scored,visible) VALUES (1,'q4',4,'read_aloud',1,'{}')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-const [qcols] = await root.query(`SELECT column_name c FROM information_schema.columns WHERE table_schema='xingya' AND table_name='questions'`);
+const [qcols] = await root.query(`SELECT column_name c FROM information_schema.columns WHERE table_schema='xingya' AND table_name='questions' ORDER BY ordinal_position`);
 ok('题目表不含答案/解析列（答案在 question_answers）', !qcols.some(r => /answer|explanation|accept/i.test(r.c)), qcols.map(r => r.c).join(','));
 await expectErr('不可变：app 不能修改已发布题目', app, `UPDATE questions SET visible='{}' WHERE id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('不可变：app 不能修改已发布答案', app, `UPDATE question_answers SET answer='{"optionId":"o2"}' WHERE question_id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
@@ -149,16 +188,25 @@ await expectErr('不可变：app 不能删除已发布版本', app, `DELETE FROM
 await expectErr('UNIQUE：同一草稿只能发布一次', app, `INSERT INTO course_versions (course_id,version_no,draft_id,template_id,template_version,title,published_by_admin_id) VALUES ('en-g1-a',2,1,'word-quest',1,'x',1)`, [], ['ER_DUP_ENTRY']);
 
 // 7) 作答与闯关记录：生成列与幂等
-await expectOk('开始作答（play）', app, `INSERT INTO plays (id,family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items,expires_at) VALUES (1,1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR),(2,1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR),(3,1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR),(4,1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR)`, [uuid(1), uuid(2), uuid(3), uuid(4)]);
-await expectErr('UNIQUE：同一请求 ID 只开始一次作答', app, `INSERT INTO plays (family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items,expires_at) VALUES (1,1,'level',1,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR)`, [uuid(1)], ['ER_DUP_ENTRY']);
-await expectErr('复合外键：作答的关卡必须属于所记录的版本', app, `INSERT INTO plays (family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items,expires_at) VALUES (1,1,'level',99,1,?,'2026-10-21','[]',NOW()+INTERVAL 2 HOUR)`, [uuid(9)], ['ER_NO_REFERENCED_ROW_2']);
+const fplay = (id, n, extra = "'level',1,1") => `(${id},1,1,${extra},'${uuid(n)}','2026-10-21','[]','finished',NOW(3))`;
+await expectOk('作答（play）：4 次已完成', app, `INSERT INTO plays (id,family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items,status,finished_at) VALUES ${fplay(1, 1)},${fplay(2, 2)},${fplay(3, 3)},${fplay(4, 4)}`);
+await expectErr('UNIQUE：同一请求 ID 只开始一次作答', app, `INSERT INTO plays (family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items) VALUES (1,1,'level',1,1,?,'2026-10-21','[]')`, [uuid(1)], ['ER_DUP_ENTRY']);
+await expectErr('复合外键：作答的关卡必须属于所记录的版本', app, `INSERT INTO plays (family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items) VALUES (1,1,'level',99,1,?,'2026-10-21','[]')`, [uuid(9)], ['ER_NO_REFERENCED_ROW_2']);
+await expectOk('开始一次未完成作答（不过期，旧系统）', app, `INSERT INTO plays (id,family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items) VALUES (5,1,1,'level',1,1,?,'2026-10-21','[]')`, [uuid(5)]);
+await expectErr('UNIQUE：同一关同时只有一次未完成作答（再次开始即恢复）', app, `INSERT INTO plays (family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items) VALUES (1,1,'level',1,1,?,'2026-10-21','[]')`, [uuid(6)], ['ER_DUP_ENTRY']);
+{ const [cols] = await root.query(`SELECT column_name c FROM information_schema.columns WHERE table_schema='xingya' AND table_name='plays' AND column_name='expires_at'`);
+  ok('作答没有过期时间列（旧系统：未完成的作答一直保留）', cols.length === 0, JSON.stringify(cols)); }
+await expectOk('秘密路线作答（金币小径，题目来自第 1 关）', app, `INSERT INTO plays (id,family_id,child_id,kind,course_version_id,level_id,secret_route,client_request_id,local_date,items) VALUES (6,1,1,'secret',1,1,'coins',?,'2026-10-21','[]')`, [uuid(7)]);
+await expectErr('CHECK：秘密路线作答必须指明路线', app, `INSERT INTO plays (family_id,child_id,kind,course_version_id,level_id,client_request_id,local_date,items) VALUES (1,1,'secret',1,2,?,'2026-10-21','[]')`, [uuid(8)], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 const att = (play, s, c, aw) => `INSERT INTO attempts (id,family_id,child_id,play_id,course_version_id,level_id,activity_date,scored_count,correct_count,stars_awarded,answers) VALUES (${play},1,1,${play},1,1,'2026-10-21',${s},${c},${aw},'[]')`;
-await expectOk('提交闯关 4/5', app, att(1, 5, 4, 1));
+await expectOk('提交闯关 4/5', app, att(1, 5, 4, 2));
 const [[a1]] = await app.query(`SELECT accuracy_pct,stars,passed FROM attempts WHERE id=1`);
-ok('生成列：4/5 => 80%、1 星、通过', a1.accuracy_pct === 80 && a1.stars === 1 && a1.passed === 1, JSON.stringify(a1));
-await app.query(`${att(2, 8, 7, 0)}; ${att(3, 4, 3, 0)}; ${att(4, 5, 5, 2)}`);
+ok('生成列：4/5 => 80%、只错 1 题 → 2 星级、通过（用户 2026-10-22）', a1.accuracy_pct === 80 && a1.stars === 2 && a1.passed === 1, JSON.stringify(a1));
+await app.query(`${att(2, 8, 7, 0)}; ${att(3, 4, 3, 0)}; ${att(4, 5, 5, 1)}`);
 const [rows] = await app.query(`SELECT accuracy_pct, stars, passed FROM attempts ORDER BY id`);
-ok('生成列：7/8=87%→1 星；3/4=75%→未通过；5/5→3 星', rows[1].stars === 1 && rows[2].passed === 0 && rows[2].stars === 0 && rows[3].stars === 3, JSON.stringify(rows.map(r => [r.accuracy_pct, r.stars, r.passed])));
+ok('生成列：7/8=87%→2 星级；3/4=75%→未通过（错 1 题但不到 80%）；5/5→3 星级', rows[1].stars === 2 && rows[2].passed === 0 && rows[2].stars === 0 && rows[3].stars === 3, JSON.stringify(rows.map(r => [r.accuracy_pct, r.stars, r.passed])));
+{ const [st] = await root.query(`SELECT generation_expression g FROM information_schema.columns WHERE table_schema='xingya' AND table_name='attempts' AND column_name='stars'`);
+  ok('星级生成列含“只错 1 题”分支（scored_count - 1），不再有 90% 阈值', /scored_count` - 1/.test(st[0].g) && !/90/.test(st[0].g), st[0].g.slice(0, 160)); }
 await expectErr('幂等：同一次作答只产生一条闯关记录', app, `INSERT INTO attempts (family_id,child_id,play_id,course_version_id,level_id,activity_date,scored_count,correct_count,stars_awarded,answers) VALUES (1,1,1,1,1,'2026-10-21',5,4,1,'[]')`, [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：每关计分题至少 4 道', app, `INSERT INTO attempts (family_id,child_id,play_id,course_version_id,level_id,activity_date,scored_count,correct_count,stars_awarded,answers) VALUES (1,1,2,1,1,'2026-10-21',3,3,0,'[]')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_DUP_ENTRY']);
 await expectErr('CHECK：关卡进度的最佳星级与首次通过时间一致', app, `INSERT INTO level_progress (family_id,child_id,course_id,unit_key,level_key,best_stars,last_attempt_at) VALUES (1,1,'en-g1-a','u01','l01',2,NOW())`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
@@ -177,9 +225,26 @@ await expectOk('复习条目（义项）', app, `INSERT INTO review_items (famil
 await expectErr('UNIQUE：同一孩子同一义项只有一条复习条目', app, `INSERT INTO review_items (family_id,child_id,item_type,sense_id,due_date) VALUES (1,1,'sense','en.apple.fruit','2026-10-23')`, [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：复习盒 1..6', app, `UPDATE review_items SET box=7 WHERE child_id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：义项条目不能带题目 ID', app, `INSERT INTO review_items (family_id,child_id,item_type,sense_id,question_id,due_date) VALUES (1,1,'sense','en.pear.fruit',1,'2026-10-22')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await app.query(`INSERT INTO plays (id,family_id,child_id,kind,client_request_id,local_date,items,expires_at) VALUES (10,1,1,'review',?,'2026-10-22','[]',NOW()+INTERVAL 2 HOUR),(11,1,1,'review',?,'2026-10-22','[]',NOW()+INTERVAL 2 HOUR),(12,1,1,'review',?,'2026-10-22','[]',NOW()+INTERVAL 2 HOUR)`, [uuid(10), uuid(11), uuid(12)]);
+await expectOk('复习条目记录来源单元（月亮秘境统计用）', app, `INSERT INTO review_items (family_id,child_id,item_type,sense_id,due_date,origin_course_id,origin_unit_key) VALUES (1,1,'sense','en.bat.animal','2026-10-22','en-g1-a','u02')`);
+await expectErr('CHECK：来源课程与来源单元同时存在', app, `INSERT INTO review_items (family_id,child_id,item_type,sense_id,due_date,origin_course_id) VALUES (1,2,'sense','en.bat.animal','2026-10-22','en-g1-a')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await app.query(`INSERT INTO plays (id,family_id,child_id,kind,client_request_id,local_date,items,status,finished_at) VALUES (10,1,1,'review',?,'2026-10-22','[]','finished',NOW(3)),(11,1,1,'review',?,'2026-10-22','[]','finished',NOW(3)),(12,1,1,'review',?,'2026-10-22','[]','finished',NOW(3))`, [uuid(10), uuid(11), uuid(12)]);
 await app.query(`INSERT INTO review_sessions (family_id,child_id,play_id,review_date,item_count,correct_count,completes_day,results) VALUES (1,1,10,'2026-10-22',10,9,0,'[]'),(1,1,11,'2026-10-22',10,10,1,'[]')`);
 await expectErr('UNIQUE：每天最多一次“今日复习完成”', app, `INSERT INTO review_sessions (family_id,child_id,play_id,review_date,item_count,correct_count,completes_day,results) VALUES (1,1,12,'2026-10-22',1,1,1,'[]')`, [], ['ER_DUP_ENTRY']);
+// 8b) 隐藏奖励与秘密路线（旧系统，ADR 0020）
+const hclaim = (lvl, type, amt, att, ledger = 'NULL') => `INSERT INTO hidden_reward_claims (family_id,child_id,course_id,unit_key,level_key,reward_type,amount,attempt_id,ledger_id) VALUES (1,1,'en-g1-a','u01','${lvl}','${type}',${amt},${att},${ledger})`;
+await expectOk('隐藏奖励：翻倍时本次没有新增星，记 0 也算已领（旧系统）', app, hclaim('l01', 'double', 0, 2));
+await expectErr('UNIQUE：每个孩子每关只领一次隐藏奖励', app, hclaim('l01', 'double', 1, 3, 1), [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：宝箱隐藏奖励固定 20 星', app, hclaim('l02', 'fixed', 19, 3, 1), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：有奖励数量必须有星星流水', app, hclaim('l02', 'double', 2, 3), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('权限：app 不能修改隐藏奖励记录', app, `UPDATE hidden_reward_claims SET amount=3`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+const sroute = (route, extra = ['', '']) => `INSERT INTO secret_routes (family_id,child_id,course_id,unit_key,route${extra[0]}) VALUES (1,1,'en-g1-a','u01','${route}'${extra[1]})`;
+await expectOk('发现秘密路线：金币小径', app, sroute('coins'));
+{ const [[sr]] = await app.query(`SELECT entry_cost c FROM secret_routes WHERE route='coins'`);
+  ok('秘密路线入场费由路线决定：金币小径 2 星（赛车 5、月亮 10）', Number(sr.c) === 2, JSON.stringify(sr)); }
+await expectErr('UNIQUE：同一单元同一路线只发现一次', app, sroute('coins'), [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：进入秘密路线必须有入场费流水', app, `UPDATE secret_routes SET entered_at=NOW(3) WHERE route='coins'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：通过秘密路线必须先进入', app, sroute('kart', [',passed_at,reward_ledger_id', ',NOW(3),1']), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('权限：秘密路线的发现记录不可改（列级授权）', app, `UPDATE secret_routes SET discovered_at=NOW(3) WHERE route='coins'`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
 
 // 9) 账本：星星
 const led = (cur, kind, d, bal, key, extra = '') => `INSERT INTO ledger (family_id,child_id,currency,kind,delta,balance_after,source_key,local_date${extra ? ',actor_parent_id' : ''}) VALUES (1,1,'${cur}','${kind}',${d},${bal},'${key}','2026-10-21'${extra ? ',' + extra : ''})`;
@@ -196,7 +261,11 @@ await expectErr('权限：app 不能 UPDATE 账本', app, `UPDATE ledger SET del
 await expectErr('权限：app 不能 DELETE 账本', app, `DELETE FROM ledger WHERE child_id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 
 // 10) 账本：碎片（同一只追加账本的第二币种）
-await expectOk('碎片：通关 +3、复习 +2', app, `${led('fragment', 'level_pass', 3, 3, 'frag:level:en-g1-a:u01:l01:2026-10-21')}; ${led('fragment', 'review_day', 2, 5, 'review:2026-10-21')}`);
+await expectOk('碎片：学习卡首次展示 +3（旧系统随机 1–3）、复习 +2', app, `${led('fragment', 'learning_card', 3, 3, 'card:1:c01')}; ${led('fragment', 'review_day', 2, 5, 'review:2026-10-21')}`);
+await expectErr('CHECK：通关不再发碎片（旧系统没有通关碎片）', app, led('fragment', 'level_pass', 3, 8, 'frag:level:x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：学习卡碎片每次 1–3 片', app, led('fragment', 'learning_card', 4, 9, 'card:1:c02'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('幂等：同一次作答同一张学习卡只发一次碎片', app, led('fragment', 'learning_card', 1, 6, 'card:1:c01'), [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：学习卡碎片不发星星', app, led('star', 'learning_card', 1, 46, 'card:1:c03'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('同一 source_key 在不同币种下各记一次', app, led('star', 'streak', 3, 44, 'review:2026-10-21'));
 await expectErr('CHECK：复习不发星星（review_day 只用于碎片，ADR 0017）', app, led('star', 'review_day', 2, 46, 'review:2026-10-19'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('幂等：碎片同一 source_key 只入账一次', app, led('fragment', 'review_day', 2, 7, 'review:2026-10-21'), [], ['ER_DUP_ENTRY']);
@@ -210,7 +279,20 @@ await expectErr('权限：app 不能 DELETE 碎片流水', app, `DELETE FROM led
 const [[fsum]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND currency='fragment'`);
 ok('碎片余额 = SUM(delta) = 5（与星星分开计算）', Number(fsum.s) === 5);
 const [[ls]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND counts_for_leaderboard=1`);
-ok('“学习星”只统计星星的 level_pass/streak', Number(ls.s) === 4, String(ls.s));
+ok('“学习星”：通关 1 + 连续 3 = 4（家长奖励不算）', Number(ls.s) === 4, String(ls.s));
+// 10a) 家长加星 / 扣星（旧系统 1–1000000，扣星带原因）、隐藏奖励与秘密路线星（孩子 2）
+const led2 = (kind, d, bal, key, actor = '', note = '') => `INSERT INTO ledger (family_id,child_id,currency,kind,delta,balance_after,source_key,local_date,actor_parent_id,note) VALUES (1,2,'star','${kind}',${d},${bal},'${key}','2026-10-21',${actor || 'NULL'},${note ? `'${note}'` : 'NULL'})`;
+await expectOk('家长加星 500（旧系统范围 1–1000000）', app, led2('parent_award', 500, 500, 'award:2:a', '1', '帮忙做家务'));
+await expectOk('家长扣星 20，带原因', app, led2('parent_deduct', -20, 480, 'deduct:2:a', '1', '没完成约定'));
+await expectErr('CHECK：扣星必须写原因', app, led2('parent_deduct', -5, 475, 'deduct:2:b', '1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：扣星必须记录家长', app, led2('parent_deduct', -5, 475, 'deduct:2:c', '', 'x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：家长加星单次不超过 1000000', app, led2('parent_award', 1000001, 1000481, 'award:2:b', '1'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('隐藏奖励 +20、秘密路线入场 −5 与奖励 +10', app, `${led2('hidden_reward', 20, 500, 'hidden:en-g1-a:u01:l02')}; ${led2('secret_entry', -5, 495, 'secret:entry:en-g1-a:u01:kart')}; ${led2('secret_reward', 10, 505, 'secret:reward:en-g1-a:u01:kart')}`);
+await expectErr('CHECK：隐藏奖励最多 20 星', app, led2('hidden_reward', 21, 526, 'hidden:x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：秘密路线入场费只能是 2 / 5 / 10', app, led2('secret_entry', -3, 502, 'secret:entry:x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：秘密路线奖励只能是 4 / 10 / 20（入场费 2 倍）', app, led2('secret_reward', 6, 511, 'secret:reward:x'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+{ const [[l2]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=2 AND counts_for_leaderboard=1`);
+  ok('学习星含隐藏奖励与秘密路线奖励（入场费、家长加减星不算）：20 + 10 = 30', Number(l2.s) === 30, String(l2.s)); }
 
 // 10b) 账本：积分（同一只追加账本的第三币种；0.01 为单位，ADR 0017）
 await expectOk('积分：关内听发音 +0.1、单词本听发音 +0.1、复习答对 +1、伙伴附赠', app, `${led('point', 'level_listen', 10, 10, 'listen:7:q1:prompt')}; ${led('point', 'word_listen', 10, 20, 'word:2026-10-21:en.bat.animal:us')}; ${led('point', 'review_correct', 100, 120, 'review_correct:2026-10-21:5')}; ${led('point', 'pet_bonus', 30, 150, 'petbonus:attempt:1')}`);
@@ -231,30 +313,47 @@ await expectErr('权限：app 不能 UPDATE 积分流水', app, `UPDATE ledger S
   ok('积分余额 = SUM(delta) = 0.50（1050 − 1000 单位）', Number(ps.s) === 50, String(ps.s));
   const [[ls2]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND counts_for_leaderboard=1`);
   ok('积分换来的星星是奖励星（不计学习星）', Number(ls2.s) === 4, String(ls2.s)); }
-await expectOk('作答记录跟随伙伴等级快照', app, `INSERT INTO plays (family_id,child_id,kind,client_request_id,local_date,items,expires_at,companion_level) VALUES (1,1,'review',?,'2026-10-22','[]',NOW()+INTERVAL 2 HOUR,12)`, [uuid(13)]);
-await expectErr('CHECK：伙伴等级快照 1–100', app, `INSERT INTO plays (family_id,child_id,kind,client_request_id,local_date,items,expires_at,companion_level) VALUES (1,1,'review',?,'2026-10-22','[]',NOW()+INTERVAL 2 HOUR,0)`, [uuid(14)], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('作答记录跟随伙伴等级快照', app, `INSERT INTO plays (family_id,child_id,kind,client_request_id,local_date,items,companion_level) VALUES (1,1,'review',?,'2026-10-22','[]',12)`, [uuid(13)]);
+await expectErr('CHECK：伙伴等级快照 1–100', app, `INSERT INTO plays (family_id,child_id,kind,client_request_id,local_date,items,status,finished_at,companion_level) VALUES (1,1,'review',?,'2026-10-22','[]','finished',NOW(3),0)`, [uuid(14)], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 
 // 11) 商店、现实奖励
-await app.query(`INSERT INTO shop_items (id,slot,name,price,image_asset_id,sort_order,status) VALUES ('hat-leaf','head','叶子帽',30,1,1,'listed'),('hat-star','head','星星帽',40,1,2,'listed')`);
+await app.query(`INSERT INTO shop_items (id,name,price,image_asset_id,sort_order,status) VALUES ('hat-leaf','叶子徽章',30,1,1,'listed'),('hat-star','星星徽章',40,1,2,'listed')`);
 await expectErr('权限：app 不能 DROP 表', app, `DROP TABLE ledger`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('权限：app 不能建账号', app, `CREATE USER 'evil'@'%' IDENTIFIED BY 'x'`, [], ['ER_SPECIFIC_ACCESS_DENIED_ERROR']);
 await expectErr('CHECK：余额缓存不可为负', app, `UPDATE balances SET balance=-1 WHERE child_id=1 AND currency='star'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('购买并持有物品', app, `${led('star', 'purchase', -30, 15, 'purchase:hat-leaf')};
-  INSERT INTO child_items (family_id,child_id,item_id,slot,equipped,purchase_ledger_id) VALUES (1,1,'hat-leaf','head',1,LAST_INSERT_ID())`);
-await expectErr('UNIQUE：同一物品只能买一次', app, `INSERT INTO child_items (family_id,child_id,item_id,slot,purchase_ledger_id) SELECT 1,1,'hat-leaf','head',MAX(id) FROM ledger`, [], ['ER_DUP_ENTRY']);
-await app.query(`INSERT INTO child_items (family_id,child_id,item_id,slot,equipped,purchase_ledger_id) SELECT 1,1,'hat-star','head',0,MAX(id) FROM ledger`);
-await expectErr('UNIQUE：同一槽位只能穿戴一件', app, `UPDATE child_items SET equipped=1 WHERE item_id='hat-star'`, [], ['ER_DUP_ENTRY']);
+  INSERT INTO child_items (family_id,child_id,item_id,equipped,purchase_ledger_id) VALUES (1,1,'hat-leaf',1,LAST_INSERT_ID())`);
+await expectErr('UNIQUE：同一物品只能买一次', app, `INSERT INTO child_items (family_id,child_id,item_id,purchase_ledger_id) SELECT 1,1,'hat-leaf',MAX(id) FROM ledger`, [], ['ER_DUP_ENTRY']);
+await app.query(`INSERT INTO child_items (family_id,child_id,item_id,equipped,purchase_ledger_id) SELECT 1,1,'hat-star',0,MAX(id) FROM ledger`);
+await expectErr('UNIQUE：同时只佩戴一枚探险徽章（旧系统）', app, `UPDATE child_items SET equipped=1 WHERE item_id='hat-star'`, [], ['ER_DUP_ENTRY']);
 const [[ss]] = await app.query(`SELECT SUM(delta) s FROM ledger WHERE child_id=1 AND currency='star'`);
 ok('星星余额 = SUM(delta) = 最后一行 balance_after', Number(ss.s) === 15, String(ss.s));
-await app.query(`INSERT INTO reward_options (id,family_id,title,star_price,created_by_parent_id) VALUES (1,1,'周末看电影',10,1),(2,2,'吃冰淇淋',5,2)`);
-await expectErr('复合外键：只能兑换本家庭的奖励', app, `INSERT INTO redemptions (family_id,child_id,reward_option_id,title_snapshot,price) VALUES (1,1,2,'吃冰淇淋',5)`, [], ['ER_NO_REFERENCED_ROW_2']);
-await app.query(`INSERT INTO redemptions (id,family_id,child_id,reward_option_id,title_snapshot,price) VALUES (1,1,1,1,'周末看电影',10)`);
+await app.query(`INSERT INTO reward_options (id,family_id,title,unit,amount_per_portion,star_price,created_by_parent_id) VALUES (1,1,'玩游戏机','minute',10,20,1),(2,2,'吃冰淇淋','count',1,5,2),(3,1,'玩具额度','fen',100,1,1)`);
+const redeem = (id, opt, title, unit, portions, unitPrice, amount, price) => `INSERT INTO redemptions (${id ? 'id,' : ''}family_id,child_id,reward_option_id,title_snapshot,unit,portions,unit_price,amount_total,price) VALUES (${id ? id + ',' : ''}1,1,${opt},'${title}','${unit}',${portions},${unitPrice},${amount},${price})`;
+await expectErr('复合外键：只能兑换本家庭的奖励', app, redeem(0, 2, '吃冰淇淋', 'count', 1, 5, 1, 5), [], ['ER_NO_REFERENCED_ROW_2']);
+await expectOk('兑换 3 份“玩游戏机”（每份 10 分钟 / 20 星）', app, redeem(1, 1, '玩游戏机', 'minute', 3, 20, 30, 60));
+await expectErr('CHECK：冻结星星 = 份数 × 每份星价', app, redeem(0, 1, '玩游戏机', 'minute', 3, 20, 30, 50), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：一次最多兑换 1000 份', app, redeem(0, 3, '玩具额度', 'fen', 1001, 1, 100100, 1001), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：批准必须记录家长与时间', app, `UPDATE redemptions SET status='approved' WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('家长批准 → 累计奖励余额 +30 分钟（获批入账流水）', app, `UPDATE redemptions SET status='approved', decided_at=NOW(3), decided_by_parent_id=1 WHERE id=1;
+  INSERT INTO reward_balances (child_id,reward_option_id,family_id,balance) VALUES (1,1,1,30);
+  INSERT INTO reward_ledger (family_id,child_id,reward_option_id,kind,delta,balance_after,redemption_id,local_date) VALUES (1,1,1,'grant',30,30,1,'2026-10-21')`);
+await expectOk('孩子用掉 10 分钟、家长核销 10 分钟（带说明）', app, `INSERT INTO reward_ledger (family_id,child_id,reward_option_id,kind,delta,balance_after,local_date) VALUES (1,1,1,'consume',-10,20,'2026-10-21');
+  INSERT INTO reward_ledger (family_id,child_id,reward_option_id,kind,delta,balance_after,actor_parent_id,reason,local_date) VALUES (1,1,1,'writeoff',-10,10,1,'周六玩了 10 分钟','2026-10-21')`);
+await expectErr('CHECK：核销必须记录家长', app, `INSERT INTO reward_ledger (family_id,child_id,reward_option_id,kind,delta,balance_after,local_date) VALUES (1,1,1,'writeoff',-5,5,'2026-10-21')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('UNIQUE：同一兑换单只入账一次', app, `INSERT INTO reward_ledger (family_id,child_id,reward_option_id,kind,delta,balance_after,redemption_id,local_date) VALUES (1,1,1,'grant',30,40,1,'2026-10-21')`, [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：累计奖励余额不可为负', app, `INSERT INTO reward_ledger (family_id,child_id,reward_option_id,kind,delta,balance_after,local_date) VALUES (1,1,1,'consume',-20,-10,'2026-10-21')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('权限：app 不能 UPDATE 累计奖励流水', app, `UPDATE reward_ledger SET delta=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
 
 // 12) 伙伴
 await expectErr('CHECK：档位星价 1–5000', app, `INSERT INTO pet_tiers (name,sort_order,star_price,fragment_price) VALUES ('免费',0,0,10)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 { const [[t]] = await app.query(`SELECT (SELECT COUNT(*) FROM pet_tiers) tiers, (SELECT COUNT(*) FROM pet_tier_stages) stages, (SELECT star_price FROM pet_tiers WHERE id=1) p1`);
-  ok('默认档位 4 个、成长阶段 16 个由迁移写入（初级 20 星）', Number(t.tiers) === 4 && Number(t.stages) === 16 && Number(t.p1) === 20, JSON.stringify(t)); }
+  ok('默认档位 5 个（含唯一档）、成长阶段 20 个由迁移写入（初级 20 星）', Number(t.tiers) === 5 && Number(t.stages) === 20 && Number(t.p1) === 20, JSON.stringify(t)); }
+{ const [tiers] = await app.query(`SELECT name, star_price s, fragment_price f, site_unique u FROM pet_tiers ORDER BY sort_order`);
+  ok('档位价格照旧系统：20/80、50/160、100/320、250/800、唯一 600/2000（全站唯一）', tiers.map(t => `${t.s}/${t.f}/${t.u}`).join(' ') === '20/80/0 50/160/0 100/320/0 250/800/0 600/2000/1', JSON.stringify(tiers)); }
+{ const [[dp]] = await app.query(`SELECT (SELECT value FROM system_settings WHERE setting_key='companion.den_slot_prices') p, (SELECT value FROM system_settings WHERE setting_key='companion.unlock_stars') u`);
+  const pp = typeof dp.p === 'string' ? JSON.parse(dp.p) : dp.p; const uu = typeof dp.u === 'string' ? JSON.parse(dp.u) : dp.u;
+  ok('营地扩建价格照旧系统 10/20/100/200/500，领养门槛默认 0', JSON.stringify(pp) === '[10,20,100,200,500]' && uu === 0, JSON.stringify(dp)); }
 { const [[c]] = await app.query(`SELECT MIN(max_level) mn, MAX(max_level) mx, MIN(xp_base) b, MIN(xp_step) st, MIN(xp_quad_div) q, (SELECT GROUP_CONCAT(min_level ORDER BY stage_no) FROM pet_tier_stages WHERE tier_id=1) lv FROM pet_tiers`);
   ok('默认档位最高 100 级、曲线 2/1/200（旧系统）、阶段 1/20/50/100', Number(c.mn) === 100 && Number(c.mx) === 100 && Number(c.b) === 2 && Number(c.st) === 1 && Number(c.q) === 200 && c.lv === '1,20,50,100', JSON.stringify(c)); }
 await expectErr('CHECK：档位最高等级 ≤ 100', app, `UPDATE pet_tiers SET max_level=101 WHERE id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
@@ -262,6 +361,9 @@ await expectErr('CHECK：曲线二次项除数 1–10000', app, `UPDATE pet_tier
 await expectErr('CHECK：第 1 阶段从 1 级开始', app, `UPDATE pet_tier_stages SET min_level=3 WHERE tier_id=1 AND stage_no=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：上架的伙伴必须经过审核', app, `INSERT INTO pet_species (species_key,name,description,tier_id,status,design,created_by_admin_id,published_at) VALUES ('leafy','叶叶','x',1,'published','{}',1,NOW(3))`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await app.query(`INSERT INTO pet_species (id,species_key,name,description,tier_id,status,design,created_by_admin_id,reviewed_by_admin_id,published_at) VALUES (1,'leafy','叶叶','原创小叶精灵',1,'published','{}',1,1,NOW(3)),(2,'pebble','石石','原创小石头',1,'published','{}',1,1,NOW(3))`);
+await expectOk('seeds:apply 导入旧系统宠物（seed 种类，无需工作室审核；单独定价）', mig, `INSERT INTO pet_species (id,species_key,name,description,origin,tier_id,star_price,fragment_price,status,design,published_at) VALUES (3,'rosalina','罗莎塔','旧系统唯一档宠物','seed',5,NULL,NULL,'published','{"image":"pub/pets/rosalina.svg"}',NOW(3)),(4,'mario','马里奥','旧系统中级宠物','seed',2,50,100,'published','{"image":"pub/pets/mario.svg"}',NOW(3))`);
+await expectErr('CHECK：工作室种类必须记录创建人', app, `INSERT INTO pet_species (species_key,name,description,origin,tier_id,design) VALUES ('nobody','无名','x','studio',1,'{}')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：种类单独定价 1–5000 星', app, `UPDATE pet_species SET star_price=0 WHERE id=4`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('用碎片领养伙伴（第一只自动成为跟随伙伴）', app, `${led('fragment', 'pet_adopt', -5, 0, 'pet:adopt:leafy')};
   INSERT INTO child_pets (family_id,child_id,species_id,is_companion,adopted_with,price_paid,adopt_ledger_id) VALUES (1,1,1,1,'fragment',5,LAST_INSERT_ID())`);
 await expectOk('用星星领养第二只', app, `${led('star', 'pet_adopt', -10, 3, 'pet:adopt:pebble')};
@@ -269,6 +371,24 @@ await expectOk('用星星领养第二只', app, `${led('star', 'pet_adopt', -10,
 await expectErr('UNIQUE：每个孩子只有一只跟随伙伴', app, `UPDATE child_pets SET is_companion=1 WHERE species_id=2`, [], ['ER_DUP_ENTRY']);
 await expectErr('UNIQUE：同种伙伴每人一只', app, `INSERT INTO child_pets (family_id,child_id,species_id,adopted_with,price_paid,adopt_ledger_id) SELECT 1,1,1,'star',10,MAX(id) FROM ledger`, [], ['ER_DUP_ENTRY']);
 await expectErr('权限：app 不能物理删除伙伴', app, `DELETE FROM child_pets WHERE child_id=1`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
+await expectOk('改名、亲密度（旧系统）', app, `UPDATE child_pets SET nickname='小叶子', affection=3 WHERE species_id=1 AND child_id=1`);
+await expectErr('CHECK：伙伴名字 1–12 字', app, `UPDATE child_pets SET nickname='${'叶'.repeat(13)}' WHERE species_id=1 AND child_id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_DATA_TOO_LONG']);
+await expectErr('CHECK：亲密度最高 100', app, `UPDATE child_pets SET affection=101 WHERE species_id=1 AND child_id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('摸摸 / 点心各一次', app, `INSERT INTO pet_interactions (child_id,child_pet_id,local_date,action,family_id) SELECT 1,id,'2026-10-21','pet',1 FROM child_pets WHERE species_id=1 AND child_id=1; INSERT INTO pet_interactions (child_id,child_pet_id,local_date,action,family_id) SELECT 1,id,'2026-10-21','feed',1 FROM child_pets WHERE species_id=1 AND child_id=1`);
+await expectErr('UNIQUE：同一伙伴同一动作每天一次', app, `INSERT INTO pet_interactions (child_id,child_pet_id,local_date,action,family_id) SELECT 1,id,'2026-10-21','pet',1 FROM child_pets WHERE species_id=1 AND child_id=1`, [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：退订必须有返还流水', app, `UPDATE child_pets SET status='refunded', ended_at=NOW(3) WHERE species_id=2 AND child_id=1`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('退订返还一半（星星 +5），之后可再领养同种', app, `${led('star', 'pet_refund', 5, 8, 'pet:refund:pebble')};
+  UPDATE child_pets SET status='refunded', ended_at=NOW(3), refund_ledger_id=LAST_INSERT_ID() WHERE species_id=2 AND child_id=1;
+  ${led('star', 'pet_adopt', -8, 0, 'pet:adopt:pebble:2')};
+  INSERT INTO child_pets (family_id,child_id,species_id,adopted_with,price_paid,adopt_ledger_id) VALUES (1,1,2,'star',8,LAST_INSERT_ID())`);
+await expectOk('赠送伙伴给兄弟姐妹（等级、亲密度、名字随之转移）', app, `UPDATE child_pets SET status='gifted', ended_at=NOW(3), is_companion=0 WHERE id=1;
+  INSERT INTO child_pets (id,family_id,child_id,species_id,nickname,affection,acquired_via,adopted_with,price_paid,gifted_from_pet_id) VALUES (10,1,2,1,'小叶子',3,'gift','fragment',5,1);
+  INSERT INTO pet_gifts (from_family_id,from_child_id,to_family_id,to_child_id,from_pet_id,to_pet_id) VALUES (1,1,1,2,1,10)`);
+await expectErr('CHECK：受赠的伙伴不能退订（防止绕过每日赠星上限）', app, `UPDATE child_pets SET status='refunded', ended_at=NOW(3), refund_ledger_id=(SELECT MAX(id) FROM ledger) WHERE id=10`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_UPDATE_TABLE_USED']);
+await expectErr('CHECK：跨家庭赠送伙伴必须关联好友关系', app, `INSERT INTO pet_gifts (from_family_id,from_child_id,to_family_id,to_child_id,from_pet_id,to_pet_id) VALUES (1,2,2,3,10,10)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_NO_REFERENCED_ROW_2']);
+await expectOk('领养唯一档宠物（全站同时只能一人拥有）', app, `${led('star', 'pet_adopt', -1, 0, 'pet:adopt:rosalina')};
+  INSERT INTO child_pets (family_id,child_id,species_id,site_unique,adopted_with,price_paid,adopt_ledger_id) VALUES (1,1,3,1,'star',600,LAST_INSERT_ID())`);
+await expectErr('UNIQUE：唯一档宠物全站同时只有一个主人', app, `INSERT INTO ledger (family_id,child_id,currency,kind,delta,balance_after,source_key,local_date) VALUES (2,3,'star','streak',1,1,'streak:x','2026-10-21'); INSERT INTO child_pets (family_id,child_id,species_id,site_unique,adopted_with,price_paid,adopt_ledger_id) VALUES (2,3,3,1,'star',600,LAST_INSERT_ID())`, [], ['ER_DUP_ENTRY']);
 await expectErr('CHECK：营地扩建最多 10 格', app, `INSERT INTO pet_dens (child_id,family_id,extra_slots) VALUES (1,1,11)`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 
 // 13) 呀哈哈发现：藏匿点由服务端在通关时决定，只能揭晓一次
@@ -323,13 +443,13 @@ await expectErr('UNIQUE：同一请求 ID 只开始一轮', app, `UPDATE word_ta
 await expectOk('随机判定记录', app, `INSERT INTO word_random_draws (child_id,draw_date,mode,identity_id,family_id,task_id) VALUES (1,'2026-10-23','challenge',1,1,1)`);
 await expectErr('UNIQUE：同日同模式同一个词只判定一次', app, `INSERT INTO word_random_draws (child_id,draw_date,mode,identity_id,family_id,task_id) VALUES (1,'2026-10-23','challenge',1,1,2)`, [], ['ER_DUP_ENTRY']);
 await expectErr('权限：app 不能删除随机判定记录', app, `DELETE FROM word_random_draws`, [], ['ER_TABLEACCESS_DENIED_ERROR']);
-await expectOk('单词闯关进步星 +3（奖励星）与伙伴附赠积分', app, `${led('star', 'word_challenge', 3, 18, 'word:1')}; ${led('point', 'pet_bonus', 36, 86, 'petbonus:word:1')}`);
+await expectOk('单词闯关星 +3（学习星，用户 2026-10-22）与伙伴附赠积分', app, `${led('star', 'word_challenge', 3, 18, 'word:1')}; ${led('point', 'pet_bonus', 36, 86, 'petbonus:word:1')}`);
 await expectErr('CHECK：单词闯关单次最多 30 星', app, led('star', 'word_challenge', 31, 49, 'word:9'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：单词考试单次最多 20 星', app, led('star', 'word_exam', 21, 39, 'word:8'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：单词星只发星星', app, led('fragment', 'word_challenge', 1, 6, 'word:7'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：伙伴附赠积分最多 30 星 × 1.00', app, led('point', 'pet_bonus', 3001, 3087, 'petbonus:word:9'), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 { const [[lw]] = await app.query(`SELECT counts_for_leaderboard c FROM ledger WHERE child_id=1 AND kind='word_challenge'`);
-  ok('单词星是奖励星（不计学习星）', Number(lw.c) === 0, JSON.stringify(lw)); }
+  ok('单词星算学习星（计入排行、伙伴经验与领养门槛；ADR 0019 修订）', Number(lw.c) === 1, JSON.stringify(lw)); }
 const wspot = (cols, vals) => `INSERT INTO hiding_spots (family_id,child_id,spot_no,spot_kind,local_date,${cols}) VALUES (1,1,${vals})`;
 await expectOk('单词闯关 ≥80 分中签：放置 1 个有呀哈哈的藏匿点', app, wspot('word_task_id,style_id,daily_seq', `1,'page','2026-10-23',1,1,1`));
 await expectErr('CHECK：单词本来源只放有呀哈哈的藏匿点', app, wspot('word_task_id', `1,'page','2026-10-23',2`), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
@@ -338,6 +458,11 @@ await expectErr('CHECK：藏匿点只能有一个来源', app, wspot('attempt_id
 await expectOk('单词本里程碑：每首次学会 5 个词必得 1 个', app, wspot('word_milestone_no,style_id,daily_seq', `1,'page','2026-10-23',1,1,2`));
 await expectErr('UNIQUE：同一里程碑只放置一次', app, wspot('word_milestone_no,style_id,daily_seq', `1,'page','2026-10-23',1,1,3`), [], ['ER_DUP_ENTRY']);
 await expectErr('UNIQUE：同一单词任务只放置一次', app, wspot('word_task_id,style_id,daily_seq', `1,'page','2026-10-23',1,1,4`), [], ['ER_DUP_ENTRY']);
+await expectOk('单元首次全 3 星级必得 1 个（默认规则，旧系统）', app, wspot('unit_milestone_key,style_id,daily_seq', `1,'leaf','2026-10-23','en-g1-a:u01',1,5`));
+await expectErr('UNIQUE：同一单元里程碑只放置一次', app, wspot('unit_milestone_key,style_id,daily_seq', `1,'leaf','2026-10-23','en-g1-a:u01',1,6`), [], ['ER_DUP_ENTRY']);
+await expectErr('CHECK：单元里程碑只放有呀哈哈的藏匿点', app, wspot('unit_milestone_key', `1,'leaf','2026-10-23','en-g1-a:u02'`), [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+{ const [cols] = await root.query(`SELECT column_name c FROM information_schema.columns WHERE table_schema='xingya' AND table_name='yahaha_sets' AND column_name='bonus_stars'`);
+  ok('呀哈哈不发奖励星（旧系统）：套组没有奖励星列', cols.length === 0, JSON.stringify(cols)); }
 { const [[st]] = await app.query(`SELECT value v FROM system_settings WHERE setting_key='wordbook.random'`);
   const v = typeof st.v === 'string' ? JSON.parse(st.v) : st.v;
   ok('单词本随机默认：开启、2000 基点、每日 2 个（旧系统）', v.enabled === true && v.probability_bps === 2000 && v.daily_limit === 2, JSON.stringify(v)); }
@@ -377,6 +502,13 @@ await expectErr('权限：app 不能 DELETE 审计', app, `DELETE FROM audit_eve
 await expectErr('CHECK：跨家庭不能发自由文本', app, `INSERT INTO messages (sender_family_id,sender_child_id,recipient_family_id,recipient_child_id,kind,body) VALUES (1,1,2,3,'text','hi http://x')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('跨家庭预设短语', app, `INSERT INTO messages (id,sender_family_id,sender_child_id,recipient_family_id,recipient_child_id,kind,phrase_key) VALUES (1,1,1,2,3,'phrase','great-job')`);
 await expectOk('家庭内自由文本（家长→孩子）', app, `INSERT INTO messages (sender_family_id,sender_parent_id,recipient_family_id,recipient_child_id,kind,body) VALUES (1,1,1,1,'text','今天真棒')`);
+await expectOk('家庭内信件：标题 + 500 字以内内容（旧系统）', app, `INSERT INTO messages (sender_family_id,sender_child_id,recipient_family_id,recipient_child_id,kind,subject,body) VALUES (1,1,1,2,'text','周末一起玩','${'好'.repeat(500)}')`);
+await expectErr('CHECK：信件内容不超过 500 字', app, `INSERT INTO messages (sender_family_id,sender_child_id,recipient_family_id,recipient_child_id,kind,body) VALUES (1,1,1,2,'text','${'好'.repeat(501)}')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED', 'ER_DATA_TOO_LONG']);
+await expectErr('CHECK：跨家庭预设短语不能带标题', app, `INSERT INTO messages (sender_family_id,sender_child_id,recipient_family_id,recipient_child_id,kind,phrase_key,subject) VALUES (1,1,2,3,'phrase','great-job','hi')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('信箱系统通知（兑换获批）', app, `INSERT INTO notifications (id,family_id,child_id,kind,title,body) VALUES (1,1,1,'redemption','兑换已批准','玩游戏机 30 分钟已放进累计奖励')`);
+await expectErr('CHECK：通知只有一个收件人', app, `INSERT INTO notifications (family_id,child_id,parent_id,kind,title,body) VALUES (1,1,1,'system','x','y')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectOk('标记通知已读', app, `UPDATE notifications SET read_at=NOW(3) WHERE id=1`);
+await expectErr('权限：通知内容不可改（列级授权）', app, `UPDATE notifications SET body='x' WHERE id=1`, [], ['ER_COLUMNACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR']);
 await expectErr('复合外键：家长不能以别家身份发消息', app, `INSERT INTO messages (sender_family_id,sender_parent_id,recipient_family_id,recipient_child_id,kind,body) VALUES (2,1,2,3,'text','x')`, [], ['ER_NO_REFERENCED_ROW_2']);
 await app.query(`INSERT INTO abuse_reports (reporter_family_id,reporter_child_id,message_id,reason) VALUES (2,3,1,'rude')`);
 await expectErr('UNIQUE：同一家庭对同一消息只举报一次', app, `INSERT INTO abuse_reports (reporter_family_id,reporter_parent_id,message_id,reason) VALUES (2,2,1,'spam')`, [], ['ER_DUP_ENTRY']);
@@ -397,7 +529,12 @@ await expectErr('权限：app 不能新增系统设置键', app, `INSERT INTO sy
 await expectOk('app 可切换 AI 总开关', app, `UPDATE system_settings SET value=CAST('false' AS JSON), version=version+1 WHERE setting_key='ai.enabled'`);
 await expectErr('CHECK：全局每日上限 1–10', app, `UPDATE system_settings SET value=CAST('11' AS JSON) WHERE setting_key='discovery.daily_cap'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：全局藏匿点概率 1–100', app, `UPDATE system_settings SET value=CAST('0' AS JSON) WHERE setting_key='discovery.spot_probability_pct'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
-await expectErr('CHECK：作答有效期 30–720 分钟', app, `UPDATE system_settings SET value=CAST('5' AS JSON) WHERE setting_key='learning.play_ttl_minutes'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：注册模式设置已删除（永久只用邀请码，用户 2026-10-22）', mig, `INSERT INTO system_settings (setting_key,value) VALUES ('registration.mode','"open"')`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：领养门槛 0–1000000', app, `UPDATE system_settings SET value=CAST('-1' AS JSON) WHERE setting_key='companion.unlock_stars'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：扩建价格阶梯最多 10 次', app, `UPDATE system_settings SET value=CAST('[1,2,3,4,5,6,7,8,9,10,11]' AS JSON) WHERE setting_key='companion.den_slot_prices'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+await expectErr('CHECK：森林口袋收藏上限 1–100000', app, `UPDATE system_settings SET value=CAST('0' AS JSON) WHERE setting_key='discovery.collection_cap'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
+{ const [[cc]] = await app.query(`SELECT value v FROM system_settings WHERE setting_key='discovery.collection_cap'`);
+  ok('森林口袋收藏上限默认 1000（旧系统）', Number(typeof cc.v === 'string' ? JSON.parse(cc.v) : cc.v) === 1000, JSON.stringify(cc)); }
 await expectErr('CHECK：单元关卡数范围 min ≤ max（默认 3–6）', app, `UPDATE system_settings SET value=CAST('{"min":6,"max":3}' AS JSON) WHERE setting_key='content.unit_levels'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectErr('CHECK：单元关卡数上限不超过 12', app, `UPDATE system_settings SET value=CAST('{"min":3,"max":20}' AS JSON) WHERE setting_key='content.unit_levels'`, [], ['ER_CHECK_CONSTRAINT_VIOLATED']);
 await expectOk('app 可把单元关卡数调整为 4–8', app, `UPDATE system_settings SET value=CAST('{"min":4,"max":8}' AS JSON), version=version+1 WHERE setting_key='content.unit_levels'`);
