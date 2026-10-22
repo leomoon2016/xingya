@@ -1,8 +1,10 @@
-/* PROTOTYPE（用完即弃）：三套方案共用的重置、自托管英文字体、呀哈哈队长与提示条。各方案用 CSS 变量换皮。 */
+/* PROTOTYPE（用完即弃）：四套方案共用的重置、自托管英文字体、呀哈哈队长与提示条。各方案用 CSS 变量换皮。 */
 @font-face { font-family: "Andika XY"; src: url(../fonts/andika-regular.woff) format("woff"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "Andika XY"; src: url(../fonts/andika-bold.woff) format("woff"); font-weight: 700; font-display: swap; }
 @font-face { font-family: "Playpen XY"; src: url(../fonts/playpen-sans-500.woff) format("woff"); font-weight: 500; font-display: swap; }
 @font-face { font-family: "Playpen XY"; src: url(../fonts/playpen-sans-700.woff) format("woff"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Baloo XY"; src: url(../fonts/baloo2-600.woff) format("woff"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Baloo XY"; src: url(../fonts/baloo2-800.woff) format("woff"); font-weight: 800; font-display: swap; }
 @font-face { font-family: "Lexend XY"; src: url(../fonts/lexend-var.woff) format("woff"); font-weight: 100 900; font-display: swap; }
 
 :root {

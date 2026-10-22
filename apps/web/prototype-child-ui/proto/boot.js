@@ -1,7 +1,7 @@
-/* PROTOTYPE（用完即弃）：渲染循环、事件委托、方案切换器（?variant=A|B|C）、原型状态面板、呀哈哈队长浮动入口。 */
+/* PROTOTYPE（用完即弃）：渲染循环、事件委托、方案切换器（?variant=A|B|C|D）、原型状态面板、呀哈哈队长浮动入口。 */
 (function () {
   const { esc } = XY; const A = XYArt;
-  const KEYS = ['A', 'B', 'C'];
+  const KEYS = ['A', 'B', 'C', 'D'];
   const app = document.getElementById('app');
   const chrome = document.getElementById('proto-chrome');
   let variant = (new URLSearchParams(location.search).get('variant') || 'A').toUpperCase();
