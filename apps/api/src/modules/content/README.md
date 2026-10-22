@@ -1,8 +1,8 @@
 # content —— 课程内容
 
-**职责**：共享词库（词、义项）、课程与不可变版本、草稿生命周期（表单编辑、自动检查、审核、发布）、题型判分器、课程模板注册（读取仓库 `seeds/course-templates/`）、示例课程导入命令；内存中的头像/短语/表情/安全词表。
+**职责**：共享词库（词、义项）、课程与不可变版本、草稿生命周期（表单编辑、自动检查、审核、发布）、题型判分器、课程模板注册（读取仓库 `seeds/course-templates/`）、示例课程导入命令、旧英语课程一次性导入命令；内存中的头像/短语/表情/安全词表。
 
-**拥有的表**：words, word_senses, courses, course_versions, course_drafts, levels, questions, question_answers。
+**拥有的表**：words, word_senses, courses, course_versions, course_drafts, units, levels, learning_cards, questions, question_answers。
 
 **规则**：其他模块只能通过本目录的 `index.ts` 调用本模块；`repo.ts` 只访问上面列出的表。
 

@@ -1,8 +1,8 @@
 # stars —— 星星
 
-**职责**：只追加账本（星星与碎片）与余额缓存、商店装扮购买与穿戴、现实奖励兑换。
+**职责**：只追加账本（星星、碎片与积分）与余额缓存、星星小铺（探险徽章购买与佩戴）、现实奖励按份兑换与审批、累计奖励（用掉 / 核销）、家长加星与扣星、星级荣誉。
 
-**拥有的表**：ledger, balances, shop_items, child_items, reward_options, redemptions。
+**拥有的表**：ledger, balances, shop_items, child_items, reward_options, redemptions, reward_balances, reward_ledger。
 
 **规则**：其他模块只能通过本目录的 `index.ts` 调用本模块；`repo.ts` 只访问上面列出的表。
 

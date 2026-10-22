@@ -5,7 +5,7 @@
 - [01-requirements/modules/family.md](01-requirements/modules/family.md)：家庭账号需求：家庭与角色、家长与孩子账号、登录方式、会话
 - [01-requirements/modules/content.md](01-requirements/modules/content.md)：课程内容需求：内容结构、课程生命周期（草稿/审核/版本）、共享词库、题目可见部分与答案部分
 - [01-requirements/modules/learning.md](01-requirements/modules/learning.md)：学习需求：课程开放与解锁、题型、判分与星级、作答（plays）与逐题反馈、间隔复习、连续天数
-- [01-requirements/modules/stars.md](01-requirements/modules/stars.md)：星星需求：星星来源、账本与余额、碎片账本、商店与装扮、现实奖励兑换
+- [01-requirements/modules/stars.md](01-requirements/modules/stars.md)：星星需求：星星来源、账本与余额、碎片账本、星星小铺四卡（探险徽章、按份兑换、累计奖励）、家长加减星、星级荣誉
 - [01-requirements/modules/social.md](01-requirements/modules/social.md)：社交需求：赠送、周排行榜、消息、好友家庭
 - [01-requirements/modules/companion.md](01-requirements/modules/companion.md)：伙伴需求：档位与领养、碎片、营地、成长、互动、AI 伙伴设计
 - [01-requirements/modules/discovery.md](01-requirements/modules/discovery.md)：呀哈哈发现需求：藏匿点、概率与上限、款式与图鉴、投放规则与 AI 一句话规则
@@ -18,7 +18,7 @@
 - [01-requirements/open-questions.md](01-requirements/open-questions.md)：待决问题（附推荐答案；Q5–Q25 为 2026-10-21 的默认值，已默认，可调整）与规格自审记录
 - [02-solution/overview.md](02-solution/overview.md)：方案总览：部署拓扑、技术栈、仓库目录、哪些内容上服务器、模块与边界、后台任务
 - [02-solution/deployment.md](02-solution/deployment.md)：部署与运维：服务器、发布流水线、监控告警、备份恢复
-- [02-solution/roadmap.md](02-solution/roadmap.md)：里程碑（约 21.5 周）、削减顺序与风险
+- [02-solution/roadmap.md](02-solution/roadmap.md)：里程碑（约 29.5 周，含 2026-10-22 逐项重新估算）、削减顺序与风险
 - [03-design/modules/family.md](03-design/modules/family.md)：家庭账号模块设计：表、边界、接口
 - [03-design/modules/content.md](03-design/modules/content.md)：课程内容模块设计（词库、草稿、发布事务）
 - [03-design/modules/learning.md](03-design/modules/learning.md)：学习模块设计（含闯关提交时序图）
@@ -32,7 +32,7 @@
 - [03-design/modules/controls.md](03-design/modules/controls.md)：家长管控模块设计
 - [03-design/modules/reports.md](03-design/modules/reports.md)：报告通知模块设计
 - [03-design/api.md](03-design/api.md)：API 概要：约定、错误格式与错误码、端点、权限矩阵
-- [03-design/data-model.md](03-design/data-model.md)：数据模型：表清单（72 张）、租户隔离、数据库账号、数据保留；附录 A 结构验证结果
+- [03-design/data-model.md](03-design/data-model.md)：数据模型：表清单（82 张）、租户隔离、数据库账号、数据保留；附录 A 结构验证结果
 - [03-design/course-model.md](03-design/course-model.md)：课程模型：存储位置、模板定义、草稿文档结构、自动检查 K1–K13、发布流程、首发内容
 - [04-ui-design/README.md](04-ui-design/README.md)：界面设计目录说明（令牌、流程、线框、效果图、组件、角色；流程、线框、效果图按 `child/`、`parent/`、`admin/` 分组）
 - [05-plans/README.md](05-plans/README.md)：实施计划目录说明
