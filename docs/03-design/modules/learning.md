@@ -4,7 +4,7 @@
 > 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../../06-releases/v1.0/changes.md)）：整批提交改为作答（plays）三步：开始（只下发可见部分）→ 逐题作答（服务端判分反馈）→ 完成（一次结算，含碎片、伙伴经验、藏匿点）。
 > 2026-10-22 单词本（用户决定，[ADR 0019](../../adr/0019-wordbook-as-old-system.md)）：照旧系统实现，新增 5 张表与 `/wordbook/*` 端点，见下方“单词本”。
 > 2026-10-21 单元层（[ADR 0016](../../adr/0016-unit-layer.md)）：路线图按单元分组；单元在课程内、关卡在单元内顺序解锁；进度键改为 `(course_id, unit_key, level_key)`；新增 `unit_progress`。
-> 2026-10-22 回归老系统（[ADR 0020](../../adr/0020-revert-to-old-system.md)）：作答不过期（删除 `expires_at` 与 `learning.play_ttl_minutes`，同一关同时只有一次未完成作答）；学习卡与学习卡碎片（通关不再发碎片）；新星级规则；隐藏奖励（`hidden_reward_claims`）与秘密路线（`secret_routes`、`plays.kind = secret`）；学习足迹与孩子自选课程；单词星算学习星、完成一轮算学习日。
+> 2026-10-22 回归老系统（[ADR 0020](../../adr/0020-revert-to-old-system.md)）：作答不过期（删除 `expires_at` 与 `learning.play_ttl_minutes`，同一关同时只有一次未完成作答）；学习卡与学习卡碎片（通关不再发碎片）；新星级规则（按错题数：0 → 3、1 → 2、≥ 2 → 1，没有未通过，用户 2026-10-22）；隐藏奖励（`hidden_reward_claims`）与秘密路线（`secret_routes`、`plays.kind = secret`）；学习足迹与孩子自选课程；单词星算学习星、完成一轮算学习日。
 
 ## 职责
 
@@ -49,12 +49,12 @@ purgeAbandonedPlays(now)                                                    // �
 - `plays.items` 记录本次下发的题目 ID（或复习生成题的义项与选项）以及每题的选项顺序；`plays.responses` 按题记录第一次作答与对错。`answer` 在 `plays` 行锁内检查“该题已有作答则直接返回已记录结果”。
 - **不过期**（旧系统，Q6）：没有有效期；生成列 `open_slot` + `UNIQUE(child_id, open_slot)` 保证同一关（同一条秘密路线、复习）同时只有一次未完成作答，再次开始返回原作答。课程发布新版本后，旧版本上的未完成作答仍可完成（按开始时的版本判分），孩子也可以“重新开始”（`abandoned`）。
 - **学习卡**：开始作答时随可见题目下发当前版本该关的 `learning_cards`（关卡卡）；`cardSeen` 在 `plays` 行锁内确认卡属于本次作答，然后 `creditInTx(fragment, learning_card, randomInt(1,4), card:{playId}:{cardKey})`（已存在则返回 0）。拓展卡由 `GET /units/:courseId/:unitKey/extension-cards` 下发，不发碎片。
-- **星级**（用户 2026-10-22）：全对 3；只错 1 题且正确率 ≥ 80% 为 2；其余 ≥ 80% 为 1；< 80% 为 0。`attempts` 的生成列复核（4/5、7/8 → 2；3/4 → 0）。
-- **隐藏奖励**：结算时若关卡 `hidden_reward` 非空且该孩子该关没有 `hidden_reward_claims` 行、本次星级 > 0 → 插入领取行（每关唯一）并 `creditInTx(star, hidden_reward, n, hidden:{attemptId})`（`double` 的 n = 本次 `level_pass` 差额，为 0 时只写领取行；`fixed` = 20）。
+- **星级**（用户 2026-10-22，按错题数）：错 0 题 3；错 1 题 2；错 ≥ 2 题 1。**没有未通过**：每次结算都通关。`attempts` 的生成列复核（3/4、7/8 → 2；6/8、0/4 → 1；5/5 → 3），`attempts` 没有 `passed` 列，`level_progress.best_stars` 为 1–3。
+- **隐藏奖励**：结算时若关卡 `hidden_reward` 非空且该孩子该关没有 `hidden_reward_claims` 行（第一次完成必然满足，星级至少 1）→ 插入领取行（每关唯一）并 `creditInTx(star, hidden_reward, n, hidden:{attemptId})`（`double` 的 n = 本次 `level_pass` 差额，为 0 时只写领取行；`fixed` = 20）。
 - **秘密路线**：结算后按单元条件（任一关 3 星级 / 通过 ≥ 3 关 / 单元复习累计答对 ≥ 5）`INSERT IGNORE secret_routes(..., discovered_at)`；`startSecretPlay` 在 `secret_routes FOR UPDATE` 内，第一次写 `entered_at` 并 `debitInTx(star, secret_entry, fee, secret:entry:{child}:{course}:{unit}:{route})`；作答题目 = 来源关卡前 3 道计分题；3 题全对且 `passed_at` 为空 → 写 `passed_at`、`creditInTx(star, secret_reward, 2 × fee, secret:reward:{attemptId})`、伙伴经验与附赠积分。
 - 完成要求全部题目已作答（`409 PLAY_INCOMPLETE`）。
 - **解锁**（按当前版本 `courseOutline`）：第 1 单元第 1 关始终可玩；单元内第 k 关在第 k−1 关已通过后解锁；第 N+1 单元在第 N 单元已完成（`unit_progress.first_completed_at` 非空）后解锁。`first_completed_at` 一旦写入不再清除，所以新版本给已完成单元加关卡时，后面的单元不会重新锁上（新增关卡在本单元内照常按顺序解锁）。
-- **单元进度**：每次通过后在同一事务内按当前版本该单元的关卡列表重算 `level_count`、`levels_passed`、`levels_three_star`；`levels_passed = level_count` 且 `first_completed_at` 为空 → 写入（返回 `unitCompleted`）；`levels_three_star = level_count` 且 `first_all_three_star_at` 为空 → 写入，并把 `trigger.unitFirstAllThreeStar = true` 传给 discovery（只触发一次）。
+- **单元进度**：每次结算（= 通关）后在同一事务内按当前版本该单元的关卡列表重算 `level_count`、`levels_passed`、`levels_three_star`；`levels_passed = level_count` 且 `first_completed_at` 为空 → 写入（返回 `unitCompleted`）；`levels_three_star = level_count` 且 `first_all_three_star_at` 为空 → 写入，并把 `trigger.unitFirstAllThreeStar = true` 传给 discovery（只触发一次）。
 
 ## 时序：开始 → 作答 → 完成
 
@@ -107,7 +107,7 @@ sequenceDiagram
   opt awarded > 0
     L->>S: creditInTx(star, level_pass, awarded, attempt:{id})
   end
-  opt 关卡有隐藏奖励且本孩子未领过、星级 > 0
+  opt 关卡有隐藏奖励且本孩子未领过（第一次完成）
     L->>DB: INSERT hidden_reward_claims（每孩子每关唯一）
     L->>S: creditInTx(star, hidden_reward, n, hidden:{attemptId})（n > 0 时）
   end
@@ -117,16 +117,15 @@ sequenceDiagram
       L->>S: creditInTx(point, pet_bonus, 学习星合计 × petRateUnits(companion_level), petbonus:attempt:{id})（ADR 0017）
     end
   end
-  opt passed
-    L->>D: placeSpotsInTx(attempt, unitKey, levelKey, trigger) → 3 个 hiding_spots（通关不再发碎片）
-    L->>DB: INSERT IGNORE secret_routes（满足出现条件的路线写 discovered_at）
-  end
+  Note over L: 每次结算都通关（没有未通过，用户 2026-10-22）
+  L->>D: placeSpotsInTx(attempt, unitKey, levelKey, trigger) → 3 个 hiding_spots（通关不再发碎片）
+  L->>DB: INSERT IGNORE secret_routes（满足出现条件的路线写 discovered_at）
   opt 单元首次全 3 星级（first_all_three_star_at 本次写入）
     L->>D: placeUnitMilestoneSpotInTx(child, course, unitKey)（必得，每孩子每单元一次；放不下记待领取）
   end
   L->>L: 连续天数；里程碑 → S.creditInTx(star, streak) + CP.addXpInTx
   L->>DB: plays → finished；写幂等响应；COMMIT
-  API-->>C: {accuracy, stars, passed, awarded, hiddenReward, xp, petPoints, spots(只有编号与位置), secretRoutesFound, nextLevelUnlocked, unitCompleted, nextUnitUnlocked, streak}
+  API-->>C: {accuracy, stars, awarded, hiddenReward, xp, petPoints, spots(只有编号与位置), secretRoutesFound, nextLevelUnlocked, unitCompleted, nextUnitUnlocked, streak}
 ```
 
 复习作答相同：`POST /review/plays` 开始，同样的 `answers` 与 `finish`；完成时写 `review_sessions`（`play_id` 唯一）、更新盒与到期日；对每个答对的条目 `creditInTx(point, review_correct, 100, review_correct:{date}:{reviewItemId})`（已存在则跳过；当天该 kind 合计达到 30 积分后不再写，在积分余额行锁内计数）；“今日完成”时只发 `fragment review_day 2`。复习不发星星、不加伙伴经验（ADR 0017）。
