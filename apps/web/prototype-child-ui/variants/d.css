@@ -25,12 +25,12 @@ body { background: var(--d-mint); color: var(--d-forest); }
 .d-back { width: 52px; height: 52px; flex: none; border-radius: 16px; border: 2px solid var(--d-line); background: #fff; color: var(--d-forest); display: grid; place-items: center; }
 
 /* 顶栏：品牌 + 星星/碎片 + 孩子；下面一排导航，当前项下面一条木牌黄短线（老系统的做法） */
-.d-top { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0 16px; padding: 10px 24px 0; background: #fff; border-bottom: 2px solid var(--d-line); }
+.d-top { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0 16px; padding: 10px 24px 0; background: #fff; border-bottom: 2px solid var(--d-line); }
 .d-top-wall { display: flex; justify-content: space-between; padding-bottom: 10px; }
 .d-brand { display: flex; align-items: center; gap: 8px; font-size: 26px; font-weight: 800; color: #1B6B52; }
 .d-logo { width: 40px; height: 40px; }
 .d-top-right { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
-.d-bank { display: flex; gap: 14px; font: 800 24px var(--d-en); }
+.d-bank { display: flex; align-items: center; justify-content: flex-end; gap: 14px; font: 800 24px var(--d-en); }
 .d-bank > span { display: inline-flex; align-items: center; gap: 4px; }
 .d-bank-star { width: 30px; height: 30px; color: #E7A800; }
 .d-bank-frag .ic { color: #6C8CE0; width: 26px; height: 26px; }
@@ -325,3 +325,64 @@ body { background: var(--d-mint); color: var(--d-forest); }
 .d-exp-6 { width: 60%; } .d-exp-7 { width: 70%; } .d-exp-8 { width: 80%; } .d-exp-9 { width: 90%; } .d-exp-10 { width: 100%; }
 /* 学习内容（单词、句子、关卡名）改用 Andika：老系统的 Baloo 2 是双层 a，和一年级课本的手写 ɑ/ɡ 不一致；Baloo 2 只留给数字和 Unit 标签。 */
 .v-d .d-opt-w, .v-d .d-chip, .v-d .d-go h2, .v-d .d-qhead h1, .v-d .d-plaque-t { font-family: "Andika XY", var(--cjk-sans); font-weight: 700; }
+
+/* 2026-10-22 加回老系统：顶栏呀哈哈收藏数“N / 1000”与积分、马里奥搭档卡、冒险进度轨道、听读加分提示、伙伴附赠积分 */
+.d-yahaha, .d-points { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 6px; border-radius: 22px; border: 2px solid #D8E6C8; background: #F1F7E8; color: var(--d-forest); font: 800 17px var(--d-en); }
+.d-yahaha img { width: 30px; height: 35px; object-fit: contain; }
+.d-points { padding: 0 12px 0 8px; border-color: #DCD3F5; background: #F4F0FF; }
+.d-points-l { font: 700 14px var(--cjk-sans); color: var(--d-mute); }
+.d-coin { width: 24px; height: 24px; flex: none; }
+.d-coin text { font-family: var(--cjk-sans); }
+.d-buddycard { margin: 0; display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 6px; border-radius: 18px; background: var(--d-paper); border: 2px solid var(--d-line); }
+.d-buddy-pic { position: relative; flex: none; width: 84px; height: 84px; }
+.d-buddy-pic img { width: 84px; height: 84px; display: block; }
+.d-buddy-deco { position: absolute; right: -8px; bottom: 0; width: 30px; height: 30px; }
+.d-buddycard figcaption { display: flex; flex-direction: column; line-height: 1.35; }
+.d-buddycard b { font-size: 16px; }
+.d-buddycard small { font-size: 14px; color: var(--d-mute); }
+.d-buddycard.is-compact { flex-direction: column; gap: 2px; padding: 8px 10px 10px; text-align: center; width: 190px; flex: none; }
+.d-buddycard.is-compact .d-buddy-pic, .d-buddycard.is-compact .d-buddy-pic img { width: 120px; height: 120px; }
+.d-qbar { align-items: center; }
+.d-trail { position: relative; flex: 1; height: 48px; margin: 0 22px; }
+.d-rail, .d-fill { position: absolute; left: 0; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px; }
+.d-rail { right: 0; background: #DCE9E3; }
+.d-fill { background: #8FD3BF; transition: width .4s ease; }
+.d-mark { position: absolute; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; opacity: .45; }
+.d-mark.is-reached { opacity: 1; }
+.d-traveler { position: absolute; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; transition: left .4s ease; }
+.d-qtheme { flex: none; font-size: 15px; color: var(--d-mute); }
+.d-listen-hint { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--d-teal); font-weight: 700; }
+.d-listen-hint .ic { width: 16px; height: 16px; }
+.d-say.is-claimed { background: #fff; box-shadow: inset 0 0 0 2px var(--d-teal); }
+.d-gain-pts b { color: #5B3FB8; }
+.d-note { display: flex; align-items: center; gap: 6px; }
+.d-note .ic { width: 18px; height: 18px; color: var(--d-teal); }
+.d-palbonus { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-radius: 18px; background: #F4F0FF; border: 2px solid #DCD3F5; }
+.d-palbonus .d-end-pal { width: 72px; height: 74px; }
+.d-palbonus-t { font-size: 19px; font-weight: 800; }
+.d-fill.d-p-0 { width: 0.00%; } .d-mark.d-p-0, .d-traveler.d-p-0 { left: 0.00%; }
+.d-fill.d-p-1 { width: 16.67%; } .d-mark.d-p-1, .d-traveler.d-p-1 { left: 16.67%; }
+.d-fill.d-p-2 { width: 33.33%; } .d-mark.d-p-2, .d-traveler.d-p-2 { left: 33.33%; }
+.d-fill.d-p-3 { width: 50.00%; } .d-mark.d-p-3, .d-traveler.d-p-3 { left: 50.00%; }
+.d-fill.d-p-4 { width: 66.67%; } .d-mark.d-p-4, .d-traveler.d-p-4 { left: 66.67%; }
+.d-fill.d-p-5 { width: 83.33%; } .d-mark.d-p-5, .d-traveler.d-p-5 { left: 83.33%; }
+.d-fill.d-p-6 { width: 100.00%; } .d-mark.d-p-6, .d-traveler.d-p-6 { left: 100.00%; }
+@media (max-width: 767px) {
+  .d-top { grid-template-columns: auto 1fr; }
+  .d-top-right { grid-column: 2; grid-row: 1; }
+  .d-top > .d-bank { grid-column: 1 / -1; grid-row: 2; justify-content: space-between; gap: 4px; padding-top: 6px; }
+  .d-me span { display: inline; font-size: 16px; }
+  .d-yahaha, .d-points { font-size: 15px; padding: 0 8px 0 4px; gap: 4px; }
+  .d-yahaha img { width: 24px; height: 28px; }
+  .d-points-l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .d-home .d-brand span, .d-end .d-brand span { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+  .d-qbar { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 10px; }
+  .d-qbar .d-qn { padding-bottom: 0; }
+  .d-qtheme { margin-left: auto; font-size: 14px; }
+  .d-trail { order: 3; flex-basis: calc(100% - 44px); margin: 4px 22px 0; }
+  .d-buddy-pic, .d-buddy-pic img { width: 72px; height: 72px; }
+  .d-buddycard.is-compact { width: auto; flex-direction: row; text-align: left; align-self: stretch; }
+  .d-buddycard.is-compact .d-buddy-pic, .d-buddycard.is-compact .d-buddy-pic img { width: 72px; height: 72px; }
+  .d-palbonus { padding: 10px 12px; }
+  .d-palbonus .d-end-pal { width: 56px; height: 58px; }
+}

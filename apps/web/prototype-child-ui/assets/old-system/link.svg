@@ -1,0 +1,253 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" class="pet-avatar pet-avatar--idle pet-avatar--link" viewBox="0 0 240 240" role="img" aria-label="林克" focusable="false" preserveAspectRatio="xMidYMid meet"><style>.character-art .pet-eyes { animation: character-blink 7.8s infinite; }
+.game-buddy .buddy-character { transform-origin: 120px 216px; animation: character-breathe 5.6s ease-in-out infinite; }
+.game-buddy > svg { overflow: visible; }
+@keyframes character-blink { 0%, 43%, 46%, 100% { transform: scaleY(1); } 44.5% { transform: scaleY(.12); } }
+@keyframes character-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+.reduce-motion .character-art *, .reduce-motion .game-buddy *, .reduce-motion.game-buddy *, .reduce-motion.pet-avatar { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .character-art *, .game-buddy * { animation: none !important; transition: none !important; } }
+/* Shared softly shaded storybook figures; face and props have independent pivots. */
+.character-art .pet-head { transform-origin: 116px 133px; }
+.pet-avatar--feed .pet-head { animation: companion-head-nod 850ms ease-in-out 1; }
+.pet-avatar--pet .pet-head { animation: companion-head-tilt 1000ms ease-in-out 1; }
+.pet-avatar--king_hyrule.pet-bouncing .pet-head { animation: companion-head-nod 1000ms ease-in-out 1; }
+.pet-avatar--link.pet-bouncing .pet-shield { animation: pet-avatar-shield 1000ms ease-in-out 1; }
+.pet-avatar--sprout.pet-bouncing .pet-wings { animation: pet-avatar-flutter 1000ms ease-in-out 2; }
+.pet-avatar--mario.pet-bouncing .pet-wave,
+.pet-avatar--zelda.pet-bouncing .pet-wave,
+.pet-avatar--monster_chief.pet-bouncing .pet-wave { animation: pet-avatar-wave 1000ms ease-in-out 1; }
+@keyframes companion-head-nod { 0%,100%{transform:rotate(0)} 35%{transform:translateY(3px) rotate(5deg)} 65%{transform:rotate(-2deg)} }
+@keyframes companion-head-tilt { 0%,100%{transform:rotate(0)} 40%{transform:rotate(-7deg)} 75%{transform:rotate(3deg)} }
+/* Reference poses keep pivots at their actual shoulder, neck and shield grip. */
+.pet-avatar.pet-avatar--mario .mario-greeting-arm { transform-origin: 148px 137px; }
+.character-art .mario-head { transform-origin: 116px 131px; }
+.character-art .bowser-head { transform-origin: 115px 122px; }
+.character-art .link-head { transform-origin: 113px 113px; }
+.pet-avatar.pet-avatar--link .link-shield { transform-origin: 164px 163px; }
+.pet-avatar.pet-avatar--bowser .bowser-greeting-arm { transform-origin: 150px 134px; }
+.pet-avatar--bowser.pet-bouncing .bowser-greeting-arm { animation: companion-fist 900ms ease-in-out 1; }
+@keyframes companion-fist { 0%,100%{transform:rotate(0)} 35%{transform:rotate(-12deg) translateY(-3px)} 65%{transform:rotate(3deg)} }
+
+.pet-avatar {
+  position: relative;
+  display: inline-flex;
+  width: 220px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 0;
+  isolation: isolate;
+  user-select: none;
+}
+
+.pet-avatar > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.pet-avatar--compact { width: 88px; }
+.pet-avatar .pet-character { transform-origin: 117px 211px; }
+.pet-avatar .pet-wave { transform-origin: 170px 156px; }
+.pet-avatar .pet-wings { transform-origin: 114px 144px; }
+.pet-avatar .pet-shield { transform-origin: 79px 172px; }
+.pet-avatar .pet-mood-marks { transform-origin: 120px 120px; }
+.pet-avatar .pet-eyes { transform-box: view-box; }
+.pet-avatar .pet-ground { transform-origin: 117px 218px; }
+
+/* 待机微动作：呼吸、轻盈起伏、眼睛眨动、翅膀与挥手微动 */
+.pet-avatar--idle .pet-character { animation: pet-avatar-idle-breathe 5.6s ease-in-out infinite; }
+.pet-avatar--idle .pet-ground { animation: pet-ground-breathe 5.6s ease-in-out infinite; }
+
+/* 互动微交互：点击弹跳与可交互状态 */
+.pet-avatar.pet-interactive {
+  cursor: pointer;
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.pet-avatar.pet-interactive:hover {
+  transform: scale(1.02);
+}
+.pet-avatar.pet-interactive:focus-visible { outline: 3px solid #147A66; outline-offset: 4px; border-radius: 28px; }
+.pet-avatar.pet-bouncing .pet-character {
+  animation: pet-avatar-bounce 600ms cubic-bezier(0.34, 1.56, 0.64, 1) 1;
+}
+
+/* 情绪微交互动作 */
+.pet-avatar--happy .pet-character { animation: pet-avatar-happy-sway 1.2s ease-in-out 2; }
+.pet-avatar--happy .pet-wave { animation: pet-avatar-wave 1000ms ease-in-out 2; }
+.pet-avatar--comfort .pet-character { animation: pet-avatar-comfort-nod 1.6s ease-in-out 1; }
+
+.pet-avatar--pet .pet-character { animation: pet-avatar-nuzzle 900ms ease-in-out 1; }
+.pet-avatar--pet .pet-wave { animation: pet-avatar-wave 900ms ease-in-out 1; }
+.pet-avatar--feed .pet-character { animation: pet-avatar-nod 850ms ease-in-out 1; }
+.pet-avatar--play .pet-character { animation: pet-avatar-hop 950ms ease-in-out 1; }
+.pet-avatar--play .pet-wings { animation: pet-avatar-flutter 950ms ease-in-out 1; }
+.pet-avatar--play .pet-shield { animation: pet-avatar-shield 950ms ease-in-out 1; }
+.pet-avatar--celebrate .pet-character { animation: pet-avatar-cheer 1100ms ease-in-out 2; }
+.pet-avatar--celebrate .pet-wave { animation: pet-avatar-wave 1100ms ease-in-out 2; }
+.pet-avatar--celebrate .pet-wings { animation: pet-avatar-flutter 1100ms ease-in-out 2; }
+.pet-avatar .pet-mood-marks { animation: pet-avatar-marks 500ms ease-out 1; }
+
+/* 萌趣台词气泡 */
+.pet-speech-bubble {
+  position: absolute;
+  top: -46px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ffffff;
+  color: #194f42;
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  width: max-content;
+  max-width: min(270px, 80vw);
+  white-space: normal;
+  line-height: 1.45;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border: 2px solid #52b788;
+  pointer-events: none;
+  z-index: 10;
+  animation: pet-bubble-pop 250ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.pet-speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 8px 6px 0;
+  border-style: solid;
+  border-color: #52b788 transparent transparent;
+}
+
+/* 点击飘心与粒子 */
+.pet-floating-particle {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  font-size: 22px;
+  pointer-events: none;
+  animation: pet-particle-rise 1.2s ease-out forwards;
+  z-index: 9;
+}
+
+@keyframes pet-avatar-idle-breathe {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(-1.5px) scale(1.006, 0.994); }
+}
+@keyframes pet-ground-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.12; }
+  50% { transform: scale(0.92); opacity: 0.08; }
+}
+@keyframes pet-avatar-blink {
+  0%, 46%, 50%, 100% { transform: scaleY(1); }
+  48% { transform: scaleY(0.1); }
+}
+@keyframes pet-avatar-subtle-flutter {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes pet-avatar-subtle-wave {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(-5deg); }
+}
+@keyframes pet-avatar-bounce {
+  0% { transform: scale(1, 1); }
+  25% { transform: scale(1.12, 0.88) translateY(2px); }
+  50% { transform: scale(0.92, 1.1) translateY(-14px); }
+  75% { transform: scale(1.04, 0.96) translateY(-4px); }
+  100% { transform: scale(1, 1) translateY(0); }
+}
+@keyframes pet-avatar-happy-sway {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-6px) rotate(-4deg); }
+  75% { transform: translateY(-6px) rotate(4deg); }
+}
+@keyframes pet-avatar-comfort-nod {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03, 0.97) translateY(2px); }
+}
+@keyframes pet-bubble-pop {
+  from { opacity: 0; transform: translateX(-50%) scale(0.7); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+@keyframes pet-particle-rise {
+  0% { opacity: 1; transform: translate(-50%, 0) scale(0.6); }
+  50% { opacity: 0.9; transform: translate(calc(-50% + 15px), -35px) scale(1.2); }
+  100% { opacity: 0; transform: translate(calc(-50% - 10px), -60px) scale(0.8); }
+}
+@keyframes pet-avatar-nuzzle {
+  0%, 100% { transform: rotate(0); }
+  35% { transform: rotate(-5deg); }
+  70% { transform: rotate(4deg); }
+}
+@keyframes pet-avatar-wave {
+  0%, 100% { transform: rotate(0); }
+  30%, 70% { transform: rotate(-17deg); }
+  50% { transform: rotate(9deg); }
+}
+@keyframes pet-avatar-nod {
+  0%, 100% { transform: scale(1); }
+  35% { transform: scale(1.025, .94); }
+  65% { transform: scale(.98, 1.02); }
+}
+@keyframes pet-avatar-hop {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  20% { transform: scale(1.025, .96); }
+  45% { transform: translateY(-9px) rotate(-4deg); }
+  70% { transform: translateY(-3px) rotate(3deg); }
+}
+@keyframes pet-avatar-flutter {
+  0%, 100% { transform: scaleX(1); }
+  25%, 65% { transform: scaleX(.86); }
+  45%, 85% { transform: scaleX(1.03); }
+}
+@keyframes pet-avatar-shield {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-9px) rotate(-7deg); }
+}
+@keyframes pet-avatar-cheer {
+  0%, 100% { transform: translateY(0); }
+  20% { transform: scale(1.03, .95); }
+  45% { transform: translateY(-8px) rotate(-3deg); }
+  70% { transform: translateY(-3px) rotate(3deg); }
+}
+@keyframes pet-avatar-marks {
+  from { opacity: .25; transform: scale(.88); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.reduce-motion .pet-avatar *,
+.reduce-motion .pet-avatar *::before,
+.reduce-motion .pet-avatar *::after,
+.reduce-motion .pet-avatar { animation: none !important; transition: none !important; }
+.reduce-motion .pet-avatar.pet-interactive:hover { transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-avatar *, .pet-avatar *::before, .pet-avatar *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .pet-avatar { transition: none !important; }
+  .pet-avatar.pet-interactive:hover { transform: none; }
+}
+/* Each greeting has one finite signature motion, replayed by the character key. */
+.pet-avatar--bowser.pet-bouncing .pet-character { animation: companion-stomp 900ms ease-in-out 1; }
+.pet-avatar--link.pet-bouncing .pet-character { animation: companion-salute 1000ms ease-in-out 1; }
+.pet-avatar--yoshi.pet-bouncing .pet-character { animation: pet-avatar-hop 850ms ease-in-out 2; }
+.pet-avatar--sprout.pet-bouncing .pet-character { animation: companion-hover 1400ms ease-in-out 1; }
+.pet-avatar--panda.pet-bouncing .pet-character { animation: companion-sway 1200ms ease-in-out 1; }
+.pet-avatar--king_hyrule.pet-bouncing .pet-character { animation: pet-avatar-nod 1000ms ease-in-out 1; }
+.pet-avatar--zelda.pet-bouncing .pet-character { animation: companion-curtsy 1400ms ease-in-out 1; }
+.pet-avatar--monster_chief.pet-bouncing .pet-character { animation: companion-stomp 700ms ease-in-out 2; }
+@keyframes companion-stomp { 0%,100%{transform:translateY(0)} 25%{transform:translateY(-4px) rotate(-5deg)} 45%{transform:translateY(2px) scale(1.03,.96)} 70%{transform:translateY(-3px) rotate(5deg)} }
+@keyframes companion-salute { 0%,100%{transform:rotate(0)} 30%{transform:translateY(-3px) rotate(-3deg)} 65%{transform:rotate(2deg)} }
+@keyframes companion-hover { 0%,100%{transform:translateY(0)} 35%{transform:translateY(-13px) rotate(-4deg)} 65%{transform:translateY(-11px) rotate(4deg)} }
+@keyframes companion-sway { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-9deg)} 75%{transform:rotate(9deg)} }
+@keyframes companion-curtsy { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-5deg) translateY(-3px)} 55%{transform:scale(.98,.94) translateY(4px)} 80%{transform:rotate(4deg)} }
+</style><ellipse class="pet-ground" cx="117" cy="218" rx="65" ry="9" fill="#254b43" opacity=".12"></ellipse><g class="pet-character" stroke="#254b43" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><g class="character-art" data-character="link" stroke="#405348" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><defs><linearGradient id="companion-_R_r_-34864C" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#61a173"></stop><stop offset=".48" stop-color="#34864C"></stop><stop offset="1" stop-color="#2c7140"></stop></linearGradient><linearGradient id="companion-_R_r_-62A963" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#85bc85"></stop><stop offset=".48" stop-color="#62A963"></stop><stop offset="1" stop-color="#528e53"></stop></linearGradient><linearGradient id="companion-_R_r_-E5E1C9" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#ebe8d5"></stop><stop offset=".48" stop-color="#E5E1C9"></stop><stop offset="1" stop-color="#c0bda9"></stop></linearGradient><linearGradient id="companion-_R_r_-916039" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#a98365"></stop><stop offset=".48" stop-color="#916039"></stop><stop offset="1" stop-color="#7a5130"></stop></linearGradient><linearGradient id="companion-_R_r_-469955" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#6faf7a"></stop><stop offset=".48" stop-color="#469955"></stop><stop offset="1" stop-color="#3b8147"></stop></linearGradient><linearGradient id="companion-_R_r_-E7E3CA" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#ece9d6"></stop><stop offset=".48" stop-color="#E7E3CA"></stop><stop offset="1" stop-color="#c2bfaa"></stop></linearGradient><linearGradient id="companion-_R_r_-2E7648" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#5c9470"></stop><stop offset=".48" stop-color="#2E7648"></stop><stop offset="1" stop-color="#27633c"></stop></linearGradient><linearGradient id="companion-_R_r_-C7D8B6" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#d3e1c6"></stop><stop offset=".48" stop-color="#C7D8B6"></stop><stop offset="1" stop-color="#a7b599"></stop></linearGradient><linearGradient id="companion-_R_r_-E5C774" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#ebd393"></stop><stop offset=".48" stop-color="#E5C774"></stop><stop offset="1" stop-color="#c0a761"></stop></linearGradient><linearGradient id="companion-_R_r_-795336" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#967962"></stop><stop offset=".48" stop-color="#795336"></stop><stop offset="1" stop-color="#66462d"></stop></linearGradient><linearGradient id="companion-_R_r_-D9B65B" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#e1c67f"></stop><stop offset=".48" stop-color="#D9B65B"></stop><stop offset="1" stop-color="#b6994c"></stop></linearGradient><linearGradient id="companion-_R_r_-A67B48" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#ba9870"></stop><stop offset=".48" stop-color="#A67B48"></stop><stop offset="1" stop-color="#8b673c"></stop></linearGradient><linearGradient id="companion-_R_r_-DBE9E5" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#e3eeeb"></stop><stop offset=".48" stop-color="#DBE9E5"></stop><stop offset="1" stop-color="#b8c4c0"></stop></linearGradient><linearGradient id="companion-_R_r_-5368A0" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#7989b5"></stop><stop offset=".48" stop-color="#5368A0"></stop><stop offset="1" stop-color="#465786"></stop></linearGradient><linearGradient id="companion-_R_r_-F7CEA4" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#f9d9b8"></stop><stop offset=".48" stop-color="#F7CEA4"></stop><stop offset="1" stop-color="#cfad8a"></stop></linearGradient><linearGradient id="companion-_R_r_-C99835" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#d5af61"></stop><stop offset=".48" stop-color="#C99835"></stop><stop offset="1" stop-color="#a9802d"></stop></linearGradient><linearGradient id="companion-_R_r_-E4AF81" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#eac19d"></stop><stop offset=".48" stop-color="#E4AF81"></stop><stop offset="1" stop-color="#c0936c"></stop></linearGradient><linearGradient id="companion-_R_r_-E6BA43" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#ecc96c"></stop><stop offset=".48" stop-color="#E6BA43"></stop><stop offset="1" stop-color="#c19c38"></stop></linearGradient><linearGradient id="companion-_R_r_-FFFEF7" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#fffef9"></stop><stop offset=".48" stop-color="#FFFEF7"></stop><stop offset="1" stop-color="#d6d5cf"></stop></linearGradient><linearGradient id="companion-_R_r_-398EBD" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#65a7cc"></stop><stop offset=".48" stop-color="#398EBD"></stop><stop offset="1" stop-color="#30779f"></stop></linearGradient><linearGradient id="companion-_R_r_-254346" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#556c6f"></stop><stop offset=".48" stop-color="#254346"></stop><stop offset="1" stop-color="#1f383b"></stop></linearGradient><linearGradient id="companion-_R_r_-C8DADB" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#d4e2e3"></stop><stop offset=".48" stop-color="#C8DADB"></stop><stop offset="1" stop-color="#a8b7b8"></stop></linearGradient><linearGradient id="companion-_R_r_-356191" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#6184a9"></stop><stop offset=".48" stop-color="#356191"></stop><stop offset="1" stop-color="#2d517a"></stop></linearGradient><linearGradient id="companion-_R_r_-F5C94C" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#f7d573"></stop><stop offset=".48" stop-color="#F5C94C"></stop><stop offset="1" stop-color="#cea940"></stop></linearGradient><linearGradient id="companion-_R_r_-DF7965" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#e69687"></stop><stop offset=".48" stop-color="#DF7965"></stop><stop offset="1" stop-color="#bb6655"></stop></linearGradient></defs><path d="M105 76c22-8 50-23 68-40-1 31-13 49-36 64z" fill="url(#companion-_R_r_-34864C)"></path><path d="M131 71q22-10 32-22l-10 28z" fill="url(#companion-_R_r_-62A963)" stroke="none"></path><path d="m88 166-6 31 16 9 17-38m8-1 6 31 16 6-2-35" fill="url(#companion-_R_r_-E5E1C9)"></path><path d="m82 190 21 3-5 17-1 11c-13 6-31 6-36 0-1-6 11-11 17-13zm45 3 19-5 5 20c10 4 16 9 13 13-6 5-24 4-34-2z" fill="url(#companion-_R_r_-916039)"></path><path d="m83 195 13 3m35-1 11-4m-76 27 28-1m39 1 25 1" fill="none" stroke="#C09056" stroke-width="2.5"></path><path d="M89 105c-14-1-23 9-28 23l15 17 22-20m30-17q18-5 31 12l-9 23-26-18" fill="url(#companion-_R_r_-469955)"></path><path d="m65 126-10 18 12 9 12-19m72-7 5 22 15-5-5-21" fill="url(#companion-_R_r_-E7E3CA)"></path><path d="m56 139-8 21 14 8 11-21m83-9 3 24 15-2-4-23" fill="url(#companion-_R_r_-916039)"></path><path d="m57 147 8 4m-10 2 8 4m98-13 10-1m-9 7 11-1" stroke="#BE8B53" stroke-width="1.6"></path><path d="M94 104q17-7 35 1l9 27 12 40-29 9-8-9-10 9-26-10 8-39z" fill="url(#companion-_R_r_-469955)"></path><path d="m128 119 17 50-21 7-4-37z" fill="url(#companion-_R_r_-2E7648)" stroke="none"></path><path d="m92 107 17 12 22-13-8 20-14-7-9 10z" fill="url(#companion-_R_r_-C7D8B6)" stroke-width="1.4"></path><path d="m105 121 6 10m6-10-10 10m-1 0 5 7m7-7-10 7" fill="none" stroke="#E5E1C9" stroke-width="1.6"></path><path d="m129 103 9 5-42 57-8-5z" fill="url(#companion-_R_r_-916039)" stroke-width="1.4"></path><path d="m130 112-7 9 6 4 7-9z" fill="url(#companion-_R_r_-E5C774)" stroke-width="1.1"></path><path d="m85 145 50 2 3 10-55-2z" fill="url(#companion-_R_r_-795336)"></path><rect x="105" y="146" width="15" height="11" rx="1.5" fill="url(#companion-_R_r_-D9B65B)" stroke-width="1.3"></rect><rect x="109" y="149" width="7" height="5" fill="url(#companion-_R_r_-795336)" stroke="none"></rect><path d="m129 153 13 1 3 16-13 3z" fill="url(#companion-_R_r_-A67B48)" stroke-width="1.4"></path><g class="pet-sword link-sword"><path d="m51 159-22-73 4-12 8 9 22 72z" fill="url(#companion-_R_r_-DBE9E5)" stroke="#718F8A" stroke-width="1.4"></path><path d="m33 82 23 73" fill="none" stroke="#FFFEF7" stroke-width="2"></path><path d="m42 156 7-7 21-6 8 3-8 7-11 3-8 10z" fill="url(#companion-_R_r_-5368A0)" stroke-width="1.6"></path><path d="m57 159 7 19" stroke="#4E6599" stroke-width="7"></path><path d="m58 163 5-2m-3 7 5-2m-3 7 5-2" stroke="#9BC4CA" stroke-width="1.3"></path><path d="m63 177 5-2 4 6-6 4z" fill="url(#companion-_R_r_-5368A0)" stroke-width="1.2"></path></g><path d="M51 157c-9-3-11 5-6 9 0 9 7 12 12 7l7-5-3-11z" fill="url(#companion-_R_r_-F7CEA4)" stroke-width="1.6"></path><g class="pet-head link-head"><path d="M80 55q20-19 49-5 20 15 12 47l-51 10-17-25z" fill="url(#companion-_R_r_-C99835)"></path><path d="m85 74-27-15c2 16 9 28 24 30m54-15 23-19c2 15-4 30-20 33" fill="url(#companion-_R_r_-F7CEA4)" stroke-width="1.8"></path><path d="m65 67 16 14m60 0 11-16" fill="none" stroke="#C8946C" stroke-width="1.7"></path><path d="M84 61q23-17 47 0l6 24c1 16-11 30-25 35-16-5-30-17-30-33z" fill="url(#companion-_R_r_-F7CEA4)"></path><path d="M127 68q12 21-2 39l-13 11q24-4 25-29z" fill="url(#companion-_R_r_-E4AF81)" stroke="none"></path><path d="M78 56q10-23 38-19 24 0 30 24l-1 36-13-13-1-27-20 20 1-17-13 14-7 25-11 4 1-29z" fill="url(#companion-_R_r_-E6BA43)"></path><path d="m89 56 13-10m15-2 12 9m-40 24-3 15" fill="none" stroke="#FFE492" stroke-width="3"></path><path d="M78 56q10-21 35-23 24-2 39 11l-5 12q-38-16-69 7z" fill="url(#companion-_R_r_-34864C)"></path><path d="M83 49q28-17 58-3" fill="none" stroke="#6AAF67" stroke-width="3"></path><path d="m93 78 10-2m18 0 10 3" stroke="#A47A35" stroke-width="2.4"></path><g class="pet-eyes" style="transform-origin:113px 87px"><path d="M93 84q6-6 14 1l-2 9q-8 2-12-10zm26 1q8-7 14-1-3 12-11 10z" fill="url(#companion-_R_r_-FFFEF7)" stroke-width="1"></path><ellipse cx="102" cy="88" rx="3.8" ry="5.8" fill="url(#companion-_R_r_-398EBD)" stroke="none"></ellipse><ellipse cx="125" cy="88" rx="3.8" ry="5.8" fill="url(#companion-_R_r_-398EBD)" stroke="none"></ellipse><ellipse cx="102.5" cy="89" rx="1.8" ry="4" fill="url(#companion-_R_r_-254346)" stroke="none"></ellipse><ellipse cx="124.5" cy="89" rx="1.8" ry="4" fill="url(#companion-_R_r_-254346)" stroke="none"></ellipse><path d="m101 85 .5 1m23.5-1 .5 1" stroke="white" stroke-width="2"></path></g><path d="m112 93-2 6 4 1m-8 8q7 4 13-1" fill="none" stroke="#996E4C" stroke-width="1.5"></path><path d="M82 89v8m57-9v8" stroke="#3F8FAB" stroke-width="3"></path></g><g class="pet-shield link-shield"><path d="m149 139 20-9 29 14-4 37-22 26-27-19-7-33z" fill="url(#companion-_R_r_-C8DADB)" stroke="#657F82" stroke-width="2.2"></path><path d="m150 146 19-9 22 12-4 30-16 19-20-15-6-27z" fill="url(#companion-_R_r_-356191)" stroke="#EFF2D9" stroke-width="2"></path><path d="m156 147 13-6 15 8m-35 14 5 18 15 11m15-31-3 18-11 13" fill="none" stroke="#779BAF" stroke-width="1.6"></path><path d="m165 153 5-8 5 8zm-5 8 5-8 5 8zm10 0 5-8 5 8z" fill="url(#companion-_R_r_-F5C94C)" stroke="none"></path><path d="m169 164-4 6-10-4 4 8 8 3-5 2 8 10 7-10-4-2 8-4 3-7-10 4z" fill="url(#companion-_R_r_-DF7965)" stroke="none"></path><path d="m170 175 0 10" stroke="#F4B194" stroke-width="1.4"></path><circle cx="144" cy="154" r="1.4" fill="url(#companion-_R_r_-FFFEF7)" stroke="none"></circle><circle cx="191" cy="150" r="1.4" fill="url(#companion-_R_r_-FFFEF7)" stroke="none"></circle></g></g><g class="pet-growth"></g></g></svg>

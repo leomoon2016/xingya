@@ -70,6 +70,7 @@
       rows.push(['作答', `第 ${s.quiz.idx + 1}/${s.quiz.qs.length} 题，已答 ${done}，答对 ${right}`]);
     }
     if (s.result) rows.push(['结算', `对 ${s.result.C}/${s.result.S}，${s.result.stars} 星级，发 ${s.result.awarded} 星星`]);
+    if (XY.variants[variant].stateRows) rows.push(...XY.variants[variant].stateRows(s)); // 只有方案 D 有（积分、呀哈哈收藏）
     rows.push(['减少动画', s.reduceMotion || matchMedia('(prefers-reduced-motion: reduce)').matches ? '开' : '关']);
     return rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
   }
