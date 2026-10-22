@@ -31,13 +31,15 @@
 
 ## 4.1.1b 题目存储：孩子可见部分与答案部分分开
 - `questions.visible`：题干、选项（带选项 ID）、资源 ID——作答前只下发这一部分；数据库 CHECK 拒绝其中出现 `answer`、`accept`、`explanation`、`correct`、`correctOptionId` 字段。
-- `question_answers`：正确选项 ID / 标准答案 / 可接受答案 / 正确顺序、解析。只有判分器在服务端读取，作答后才返回给客户端。
+- `question_answers`：正确选项 ID / 标准答案 / 可接受答案 / 正确顺序、解析、答后显示（原文 / 中文 / 例句翻译，`reveal`）。只有判分器在服务端读取，作答后才返回给客户端。
+- `learning_cards`：关卡学习卡与单元拓展卡（旧系统，ADR 0020）；属于已发布版本，只追加、不可改，孩子开始作答时随题目可见部分一起下发（学习卡本身没有答案）。
 
 ## 4.1.1c 仓库里还保留什么（`seeds/` 内置数据，ADR 0015）
 - `seeds/course-templates/`：课程模板定义（每个单元的关卡结构、题型组合、每关题数、适用年级），随发布包部署、api 启动时读取，版本化。
 - `seeds/samples/english/grade-1/`：少量示例课程（如 `en-g1-a.json`，含 2 个单元），用 `xingya course:import` 导入为**草稿**（再走审核与发布）。
-- `seeds/shop/`（装扮初始数据）、`seeds/phrases/`（预设短语/表情）、`seeds/safety/`（聊天过滤词表与 AI 提示词禁止项）、`seeds/avatars/`（孩子头像）。
-- 没有课程包、没有构建期音频，部署时不导入课程；部署步骤 `xingya seeds:apply` 只补齐缺失的装扮初始数据与默认技能、角色挂载（见 `seeds/README.md`）。
+- `seeds/shop/`（探险徽章初始数据）、`seeds/pets/`（旧系统 24 种宠物，ADR 0021）、`seeds/phrases/`（预设短语/表情）、`seeds/safety/`（聊天过滤词表与 AI 提示词禁止项）、`seeds/avatars/`（孩子头像）。
+- 没有课程包、没有构建期音频，部署时不导入课程；部署步骤 `xingya seeds:apply` 只补齐缺失的徽章、种子宠物与默认技能、角色挂载（见 `seeds/README.md`）。
+- 旧英语课程不放进 `seeds/`：由一次性命令 `xingya legacy:import-courses` 转成草稿（[studio 需求 §4.8.2](studio.md#482-不变的规则)）。
 
 > 课程文档结构、模板与自动检查规则见 [课程模型](../../03-design/course-model.md)。
 
