@@ -190,10 +190,10 @@ P = 家长，K = 孩子，A = 系统管理员，D = 家庭设备 Cookie，公开
 
 | 方法 路径 | 主体 | 说明 |
 | --- | --- | --- |
-| GET /discovery/today | K | 今天还能找几个、未点开的藏匿点、收藏数与上限（顶栏“森林口袋 N / 上限”） |
+| GET /discovery/today | K | 今天还能找几个、未点开的藏匿点、收藏数与上限（顶栏“森林口袋 N / 1000”，分母为收藏上限） |
 | POST /discovery/reconcile | K | 补发待领取的单元满星必得藏匿点（幂等） |
 | POST /discovery/spots/:spotId/reveal | K | 点开藏匿点；重复点开返回第一次的结果；有款式时附问候音频（自动播放一次） |
-| GET /discovery/album | K | 图鉴：套组、已找到/剪影、次数、累计 |
+| GET /discovery/album | K | 图鉴：`sets[{setId, name, styles[{styleId \| 剪影, count}], foundStyles, totalStyles, completed}]`、合计 `foundStyles / totalStyles`（集齐进度，用户 2026-10-22）、`totalFinds`（累计找到数，与顶栏 N 相同） |
 | GET /children/:id/album | P | 家长查看孩子的图鉴 |
 
 **social**

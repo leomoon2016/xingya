@@ -31,7 +31,7 @@ reconcileUnitMilestones(child): SpotView[]                                      
 placeWordSpotInTx(tx, {child, wordTaskId? | milestoneNo?}): SpotView | null                     // 单词本（ADR 0019）：1 个必放款式的藏匿点；room = 0 或款式池为空 → null
 leftToday(child): {left, collected, cap}                                               // “今天还能找 N 个”、顶栏“森林口袋 N / 上限”
 reveal(child, spotId): {found: false} | {found: true, style, fragment, greetingAudio, setCompleted?}
-getAlbum(child): {sets: [{set, styles: [{style | silhouette, count}]}], total}
+getAlbum(child): {sets: [{set, styles: [{style | silhouette, count}], foundStyles, totalStyles, completed}], foundStyles, totalStyles, totalFinds}   // 集齐进度：每套与合计“已找到款式数 / 款式总数”（用户 2026-10-22）；totalStyles = 上架款式 ∪ 已找到过的款式
 // 后台
 getSettings() / updateSettings(admin, {enabled, probabilityPct, dailyCap, rarityWeights, collectionCap, unitMilestone} & {version})
 upsertSet / styleDesign…（与伙伴相同的候选 → 选定 → 关键帧 → 动效 → 叫声 → 审核 → 发布）
