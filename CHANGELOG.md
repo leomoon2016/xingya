@@ -5,6 +5,7 @@
 ## 未发布
 
 ### 新增
+- 2026-10-23：孩子端界面设计起步——新增设计令牌 `docs/04-ui-design/tokens/design-tokens.json`（色板/字体取自原型 D，断点与触控对齐 nfr §8.4）；填写孩子端线框图（shell、login、learn、review、wordbook、shop、companion、social、discovery、album、chat、inbox、footprint、settings），更新 wireframes 索引；家长/后台线框与 mockups 未做。
 - 2026-10-21：全新系统设计规格（已由用户逐节确认），数据库结构草案并在临时 MySQL 8.4 上验证（73/73）。
 - 2026-10-21：按批准的目录结构建立仓库骨架；规格拆分为 `docs/01-requirements`、`02-solution`、`03-design`、`06-releases/v1.0/scope.md`；新增 ADR 0001–0007；数据库草案拆分为 `db/migrations/0001_init.sql` 与 `db/roles.sql` 并重新验证。
 - 2026-10-21：设计变更（用户已批准）——新增伙伴模块（companion）、呀哈哈发现（discovery）、AI 工作室（studio）三个模块与 AI 生成课程，全部进入 v1.0，排期调整为约 19 周；新增 ADR 0008–0013；新增 `docs/03-design/course-model.md`（由 `content-pack.md` 改写）、各新模块的需求与设计文档、Web 端 `companion`/`discovery`/`album`/`admin/studio` 功能目录；新增整体评审报告 `docs/reviews/2026-10-21-整体评审.md`。
