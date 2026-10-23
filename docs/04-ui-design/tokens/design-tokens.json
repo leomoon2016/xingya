@@ -1,0 +1,221 @@
+{
+  "$schemaComment": "星芽学园设计令牌唯一来源。packages/ui 构建时由此生成孩子端与后台共用主题。颜色/字体以原型 D「森林探险图」为孩子端基调；中性色供家长中心与后台复用。",
+  "meta": {
+    "name": "xingya",
+    "version": "0.1.0",
+    "updated": "2026-10-23",
+    "source": "prototype/child-ui variants/d.css + proto/base.css（布局与色板参考；不复制运行时代码）",
+    "frames": {
+      "childPrimary": { "width": 1024, "height": 768, "orientation": "landscape", "label": "横屏平板" },
+      "childPhone": { "width": 360, "height": 800, "orientation": "portrait", "label": "手机竖屏" },
+      "childDesktopOptional": { "width": 1280, "height": 800, "orientation": "landscape", "label": "桌面（需要时补）" },
+      "parentNarrow": { "width": 360, "height": 800 },
+      "parentDesktop": { "width": 1280, "height": 800 },
+      "adminDesktop": { "width": 1280, "height": 800, "minWidth": 1280 }
+    }
+  },
+  "color": {
+    "child": {
+      "forest": { "value": "#264B45", "usage": "正文、深色标题；对 mint/paper ≥ 4.5:1" },
+      "teal": { "value": "#0F7F6B", "usage": "主按钮、当前态强调；白字对比约 4.9:1（原型相对老系统 #128C76 加深一档）" },
+      "tealPressed": { "value": "#0A5A4C", "usage": "主按钮立体阴影与按下态" },
+      "mint": { "value": "#E1F8F1", "usage": "页面底、答对反馈底、当前单元 tab 底" },
+      "paper": { "value": "#F7FAF4", "usage": "卡片内浅底、课程条、复习虚线框底" },
+      "surface": { "value": "#FFFFFF", "usage": "卡片与顶栏底" },
+      "wood": { "value": "#F5C94C", "usage": "木牌黄：导航当前短线、奖牌、PIN 点亮" },
+      "gold": { "value": "#E9BC64", "usage": "麦穗金：头像环、奖牌内描" },
+      "star": { "value": "#E7A800", "usage": "星级与星星图标" },
+      "sky": { "value": "#DDEDF0", "usage": "地图远空" },
+      "grass": { "value": "#94B57B", "usage": "地图草地" },
+      "stream": { "value": "#347D7B", "usage": "溪水青" },
+      "line": { "value": "#CFE3DA", "usage": "卡片描边、分隔线" },
+      "mute": { "value": "#4A5F5A", "usage": "次要文字" },
+      "stone": { "value": "#C7CEC9", "usage": "未解锁奖牌、锁定头像环" },
+      "brandDeep": { "value": "#1B6B52", "usage": "顶栏品牌字" },
+      "leaf": { "value": "#3FA65A", "usage": "装饰叶标" },
+      "danger": { "value": "#D9552C", "usage": "未读角标、答错描边" },
+      "dangerInk": { "value": "#A9471E", "usage": "答错文案" },
+      "dangerSoft": { "value": "#FFF0E6", "usage": "答错 / PIN 错误底" },
+      "warnSoft": { "value": "#FFF6D6", "usage": "锁定提示底" },
+      "warnInk": { "value": "#6B4A00", "usage": "锁定提示字" },
+      "disabled": { "value": "#B8C9C2", "usage": "禁用主按钮底" },
+      "disabledInk": { "value": "#3D4F4A", "usage": "禁用主按钮字" },
+      "points": { "value": "#5B3FB8", "usage": "积分数字强调" },
+      "pointsSoft": { "value": "#F4F0FF", "usage": "积分胶囊底" },
+      "pointsLine": { "value": "#DCD3F5", "usage": "积分胶囊边" },
+      "yahahaSoft": { "value": "#F1F7E8", "usage": "呀哈哈 N/1000 胶囊底" },
+      "yahahaLine": { "value": "#D8E6C8", "usage": "呀哈哈胶囊边" },
+      "plaqueLine": { "value": "#E3D6B3", "usage": "关卡名牌描边" },
+      "trailFill": { "value": "#8FD3BF", "usage": "闯关进度填充" },
+      "trailRail": { "value": "#DCE9E3", "usage": "闯关进度轨道" }
+    },
+    "neutral": {
+      "ink": { "value": "#1A1F1E", "usage": "家长/后台正文" },
+      "inkSecondary": { "value": "#4A5552", "usage": "次要说明" },
+      "border": { "value": "#D5DDD9", "usage": "通用描边" },
+      "bg": { "value": "#F5F7F6", "usage": "家长/后台页面底" },
+      "surface": { "value": "#FFFFFF", "usage": "卡片底" },
+      "muted": { "value": "#6B7874", "usage": "占位与禁用说明" },
+      "focus": { "value": "#1B5CFF", "usage": "焦点环（与原型 --focus 一致，三端共用）" }
+    },
+    "semantic": {
+      "success": { "value": "#0F7F6B" },
+      "successSoft": { "value": "#E1F8F1" },
+      "warning": { "value": "#C8921A" },
+      "warningSoft": { "value": "#FFF6D6" },
+      "error": { "value": "#D9552C" },
+      "errorSoft": { "value": "#FFF0E6" },
+      "info": { "value": "#347D7B" },
+      "infoSoft": { "value": "#DDEDF0" }
+    }
+  },
+  "typography": {
+    "fontFamily": {
+      "cjk": {
+        "value": ["HarmonyOS Sans SC", "PingFang SC", "MiSans", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "sans-serif"],
+        "usage": "中文指令、导航、说明（系统栈；CSP 禁止第三方字体源）"
+      },
+      "latinLearning": {
+        "value": ["Andika", "Andika XY", "cjk"],
+        "usage": "英文学习内容（单词、关卡名、句子）：单层 a/g，与一年级课本手写一致；原型自托管 Andika"
+      },
+      "latinDisplay": {
+        "value": ["Baloo 2", "Baloo XY", "cjk"],
+        "usage": "数字、Unit 标签、星级奖牌数字；不用作学习单词（双层 a）"
+      }
+    },
+    "fontSize": {
+      "xs": { "value": 13, "unit": "px" },
+      "sm": { "value": 14, "unit": "px" },
+      "md": { "value": 16, "unit": "px" },
+      "base": { "value": 17, "unit": "px", "note": "孩子端正文字号（原型 .v-d）" },
+      "lg": { "value": 18, "unit": "px" },
+      "xl": { "value": 20, "unit": "px" },
+      "2xl": { "value": 22, "unit": "px" },
+      "3xl": { "value": 24, "unit": "px" },
+      "4xl": { "value": 26, "unit": "px" },
+      "5xl": { "value": 30, "unit": "px" },
+      "6xl": { "value": 34, "unit": "px" },
+      "display": { "value": 32, "unit": "px", "note": "选项英文单词等" }
+    },
+    "fontWeight": {
+      "regular": 400,
+      "semibold": 600,
+      "bold": 700,
+      "extrabold": 800
+    },
+    "lineHeight": {
+      "tight": 1.1,
+      "snug": 1.25,
+      "body": 1.6,
+      "loose": 1.7
+    }
+  },
+  "spacing": {
+    "scale": {
+      "0": 0,
+      "1": 4,
+      "2": 8,
+      "3": 12,
+      "4": 16,
+      "5": 20,
+      "6": 24,
+      "7": 28,
+      "8": 32,
+      "9": 36,
+      "10": 40,
+      "12": 48,
+      "14": 56,
+      "16": 64
+    },
+    "unit": "px",
+    "layout": {
+      "pagePaddingX": { "tablet": 24, "phone": 12 },
+      "pagePaddingY": { "tablet": 20, "phone": 12 },
+      "homeColumnsGap": 20,
+      "studyAsideWidth": { "min": 280, "max": 320 },
+      "cardPadding": 22
+    }
+  },
+  "radius": {
+    "sm": { "value": 8, "unit": "px" },
+    "md": { "value": 14, "unit": "px" },
+    "lg": { "value": 18, "unit": "px" },
+    "xl": { "value": 20, "unit": "px" },
+    "2xl": { "value": 22, "unit": "px" },
+    "3xl": { "value": 26, "unit": "px" },
+    "4xl": { "value": 28, "unit": "px", "note": "主卡片（原型 .d-card）" },
+    "pill": { "value": 999, "unit": "px" },
+    "full": { "value": "50%" }
+  },
+  "shadow": {
+    "pressKey": {
+      "rest": "0 4px 0 {color.child.line}",
+      "active": "0 1px 0 {color.child.line}",
+      "note": "按键立体；按下 translateY(3px)"
+    },
+    "btnPrimary": {
+      "rest": "0 4px 0 {color.child.tealPressed}",
+      "active": "0 1px 0 {color.child.tealPressed}"
+    },
+    "medal": "inset 0 0 0 5px #C08A2E, inset 0 -6px 0 5px rgba(160,105,30,.35), 0 4px 0 rgba(38,75,69,.35)",
+    "currentGlow": "0 0 0 6px rgba(255,255,255,.9), 0 0 0 9px {color.child.teal}",
+    "cardNone": "none",
+    "note": "孩子端以描边 + 立体按键阴影为主，避免大面积灰阴影卡片"
+  },
+  "motion": {
+    "duration": {
+      "instant": "0ms",
+      "fast": "150ms",
+      "base": "250ms",
+      "slow": "400ms",
+      "glow": "1800ms"
+    },
+    "easing": {
+      "standard": "ease",
+      "emphasized": "ease-in-out"
+    },
+    "effects": {
+      "pinShake": "translateX ±8px，约 350ms",
+      "btnPress": "translateY(3px) + 阴影收短",
+      "currentLevelGlow": "奖牌外环呼吸（d-glow）",
+      "starTrail": "闯关进度旅行者滑动（ADR 0020 星星拖尾）",
+      "quizAutoAdvance": "答对约 600ms 后进入下一题（单词本闯关）"
+    },
+    "reduceMotion": {
+      "respectPrefersReducedMotion": true,
+      "userToggle": "pref_reduced_motion（存服务端，孩子设置页）",
+      "behavior": "动画与过渡压到 ≈0；保留瞬时状态切换；关闭呼吸光与拖尾滑动，改用静态当前位置"
+    }
+  },
+  "breakpoint": {
+    "compactMax": { "value": 767, "unit": "px", "media": "(max-width: 767px)", "label": "紧凑（手机）" },
+    "tabletMin": { "value": 768, "unit": "px", "label": "平板起" },
+    "tabletMax": { "value": 1279, "unit": "px", "label": "平板止" },
+    "desktopMin": { "value": 1280, "unit": "px", "media": "(min-width: 1280px)", "label": "桌面" },
+    "ranges": ["<768", "768–1279", "≥1280"],
+    "minSupportedWidth": { "value": 360, "unit": "px", "note": "孩子端与家长中心不出现横向滚动" }
+  },
+  "touch": {
+    "minTarget": { "value": 44, "unit": "px", "note": "NFR §8.3–8.4；原型 --tap" },
+    "comfortable": { "value": 48, "unit": "px" },
+    "primaryButtonMinHeight": { "value": 56, "unit": "px" },
+    "navItemMinHeight": { "value": 48, "unit": "px" },
+    "keypadKey": { "width": 76, "height": 68, "phoneWidth": 72, "phoneHeight": 60 }
+  },
+  "zIndex": {
+    "base": 1,
+    "stickyTop": 20,
+    "bottomNav": 30,
+    "captainFab": 40,
+    "chatPanel": 41,
+    "drawer": 50,
+    "toast": 60,
+    "modal": 70
+  },
+  "opacity": {
+    "dimmed": 0.5,
+    "disabled": 0.45,
+    "fog": 0.8
+  }
+}
