@@ -2,7 +2,7 @@
 
 画框：主 **1024×768** 横屏，另注 **360×800** 手机竖屏。外壳与色板依据原型 D + [ADR 0020](../../../adr/0020-revert-to-old-system.md)。令牌见 [`tokens/design-tokens.json`](../../tokens/design-tokens.json)。
 
-**尚未绘制**：后台线框；高保真 mockups；种子 SVG 素材。家长中心线框见 [../parent/](../parent/)（2026-10-24 已填）。
+**进度（2026-10-24）**：家长中心与后台线框已填（[../parent/](../parent/)、[../admin/](../admin/)）；高保真见 [`../../mockups/`](../../mockups/)。仍待办：种子宠物/搭档 SVG 精修。
 
 ## 外壳
 
