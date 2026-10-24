@@ -2,7 +2,7 @@
 
 用户决定（2026-10-22）：正式系统一直使用马里奥（游戏搭档），与旧系统一致。这里与 `seeds/pets/`（旧系统种子宠物，ADR 0021）是**第三方 IP 仅有的两项具名例外**，只放从旧系统复用的固定素材。
 
-计划内容（素材从旧系统 `learning-platform/code/public/assets/companions/` 复制，尚未复制）：
+计划内容（素材已从旧系统 `learning-platform/code/public/assets/companions/` 复制，2026-10-24）：
 
 | 文件 | 用途 |
 | --- | --- |

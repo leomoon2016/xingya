@@ -1,0 +1,26 @@
+[
+  {
+    "id": "coins",
+    "name": "马里奥 · 金币探险",
+    "caption": "答完一题，和搭档前进一步",
+    "image": "mario.svg"
+  },
+  {
+    "id": "treasure",
+    "name": "林克 · 宝箱冒险",
+    "caption": "答完一题，和搭档前进一步",
+    "image": "link.svg"
+  },
+  {
+    "id": "moon",
+    "name": "奥德赛 · 帽子与月亮",
+    "caption": "答完一题，和搭档前进一步",
+    "image": "mario.svg"
+  },
+  {
+    "id": "kart",
+    "name": "马里奥赛车 · 快乐出发",
+    "caption": "答完一题，和搭档前进一步",
+    "image": "mario.svg"
+  }
+]
