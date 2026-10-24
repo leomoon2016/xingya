@@ -1,0 +1,55 @@
+@import url("./tokens.css");
+body.parent { background: var(--bg); color: var(--ink); font-size: 15px; }
+.parent .shell { display: grid; grid-template-columns: 200px 1fr; min-height: 100vh; max-width: 1280px; margin: 0 auto; background: #fff; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+.parent .side { background: #fff; border-right: 1px solid var(--border); padding: 16px 12px; }
+.parent .side h1 { font-size: 16px; margin: 0 8px 16px; color: var(--ink); }
+.parent .side a {
+  display: flex; align-items: center; gap: 8px; min-height: var(--tap); padding: 0 12px;
+  border-radius: 10px; text-decoration: none; color: var(--ink2); font-weight: 600;
+}
+.parent .side a.on { background: #E8F3EF; color: var(--teal); }
+.parent .side .count { margin-left: auto; background: var(--danger); color: #fff; border-radius: 10px; padding: 0 7px; font-size: 12px; min-width: 20px; text-align: center; }
+.parent .main { display: flex; flex-direction: column; min-width: 0; }
+.parent .topbar {
+  display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border);
+}
+.parent .topbar .grow { flex: 1; font-weight: 700; }
+.parent .content { padding: 20px; }
+.parent .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.parent .chip {
+  min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid var(--border);
+  background: #fff; font-weight: 600;
+}
+.parent .chip.on { border-color: var(--teal); background: #E8F3EF; color: var(--teal); }
+.parent .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.parent .card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+.parent .card h2 { margin: 0 0 8px; font-size: 17px; }
+.parent .btn {
+  min-height: var(--tap); padding: 0 16px; border: 0; border-radius: 10px;
+  background: var(--teal); color: #fff; font-weight: 700;
+}
+.parent .btn.ghost { background: #fff; color: var(--teal); border: 1px solid var(--teal); }
+.parent .btn.danger { background: var(--danger); }
+.parent .btn:disabled { opacity: .45; cursor: not-allowed; }
+.parent .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.parent .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.parent .field input, .parent .field textarea, .parent .field select {
+  min-height: var(--tap); padding: 0 12px; border: 1px solid var(--border); border-radius: 10px;
+}
+.parent .field textarea { min-height: 88px; padding: 10px 12px; }
+.parent table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.parent th, .parent td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+.parent .muted { color: var(--muted); }
+.parent .empty { padding: 32px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 12px; }
+@media (max-width: 767px) {
+  .parent .shell { grid-template-columns: 1fr; max-width: 360px; }
+  .parent .side { display: none; }
+  .parent .cards { grid-template-columns: 1fr; }
+  .parent .bottom {
+    position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr);
+    border-top: 1px solid var(--border); background: #fff;
+  }
+  .parent .bottom a { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; text-decoration: none; color: var(--ink2); font-weight: 600; }
+  .parent .bottom .on { color: var(--teal); }
+}
+@media (min-width: 768px) { .parent .bottom { display: none; } }

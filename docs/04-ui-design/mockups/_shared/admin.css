@@ -1,0 +1,38 @@
+@import url("./tokens.css");
+body.admin { background: #EEF1F0; color: var(--ink); font-size: 13px; }
+.admin .shell { display: grid; grid-template-columns: 200px 1fr; min-height: 100vh; max-width: 1440px; margin: 0 auto; }
+.admin .side { background: #1F2A28; color: #D7E3DF; padding: 12px 8px; }
+.admin .side .brand { font-weight: 800; font-size: 15px; padding: 8px 10px 16px; color: #fff; }
+.admin .side a {
+  display: block; min-height: 36px; line-height: 36px; padding: 0 10px; border-radius: 6px;
+  color: #B8C9C4; text-decoration: none; font-weight: 600;
+}
+.admin .side a:hover { background: rgba(255,255,255,.06); color: #fff; }
+.admin .side a.on { background: var(--teal); color: #fff; }
+.admin .side .group { margin: 12px 10px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .55; }
+.admin .main { min-width: 0; display: flex; flex-direction: column; }
+.admin .topbar {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.admin .crumb { color: var(--muted); }
+.admin .content { padding: 16px; }
+.admin .panel { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.admin .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.admin .btn {
+  min-height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: #fff; font-weight: 600; font-size: 13px;
+}
+.admin .btn.primary { background: var(--teal); color: #fff; border-color: var(--teal); }
+.admin table { width: 100%; border-collapse: collapse; }
+.admin th, .admin td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.admin th { background: #F7F9F8; font-size: 12px; color: var(--muted); font-weight: 700; }
+.admin .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #E8F3EF; color: var(--teal); font-size: 12px; font-weight: 700; }
+.admin .tag.warn { background: #FFF6D6; color: #6B4A00; }
+.admin .tag.bad { background: var(--danger-soft); color: var(--danger-ink); }
+.admin input, .admin select, .admin textarea {
+  min-height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
+}
+.admin .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.admin .muted { color: var(--muted); }
+.admin .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }

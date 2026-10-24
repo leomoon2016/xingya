@@ -1,0 +1,30 @@
+/* 由 docs/04-ui-design/tokens/design-tokens.json 手工同步（高保真静态稿，非构建产物） */
+:root {
+  --forest: #264B45; --teal: #0F7F6B; --teal-pressed: #0A5A4C;
+  --mint: #E1F8F1; --paper: #F7FAF4; --surface: #fff;
+  --wood: #F5C94C; --gold: #E9BC64; --star: #E7A800;
+  --sky: #DDEDF0; --grass: #94B57B; --line: #CFE3DA;
+  --mute: #4A5F5A; --stone: #C7CEC9; --brand: #1B6B52;
+  --danger: #D9552C; --danger-ink: #A9471E; --danger-soft: #FFF0E6;
+  --points: #5B3FB8; --points-soft: #F4F0FF;
+  --yahaha-soft: #F1F7E8; --yahaha-line: #D8E6C8;
+  --ink: #1A1F1E; --ink2: #4A5552; --border: #D5DDD9;
+  --bg: #F5F7F6; --muted: #6B7874; --focus: #1B5CFF;
+  --radius-card: 28px; --radius-btn: 18px; --radius-lg: 18px;
+  --tap: 44px;
+  --cjk: "HarmonyOS Sans SC", "PingFang SC", "MiSans", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --latin-learn: Andika, "Segoe UI", var(--cjk);
+  --latin-num: "Baloo 2", "Segoe UI", var(--cjk);
+  --shadow-btn: 0 4px 0 var(--teal-pressed);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; font-family: var(--cjk); color: var(--ink); background: var(--bg); line-height: 1.55; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--teal); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
