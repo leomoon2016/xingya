@@ -5,6 +5,7 @@
 ## 未发布
 
 ### 新增
+- 2026-10-24：家长中心线框图——`docs/04-ui-design/wireframes/parent/`（shell、dashboard、overview、approvals、rewards、controls、reports、settings、inbox）；与孩子小铺兑换审批 / 累计核销闭环；含任务单 17 家庭与账号设置页；后台线框未做。
 - 2026-10-23：孩子端界面设计起步——新增设计令牌 `docs/04-ui-design/tokens/design-tokens.json`（色板/字体取自原型 D，断点与触控对齐 nfr §8.4）；填写孩子端线框图（shell、login、learn、review、wordbook、shop、companion、social、discovery、album、chat、inbox、footprint、settings），更新 wireframes 索引；家长/后台线框与 mockups 未做。
 - 2026-10-21：全新系统设计规格（已由用户逐节确认），数据库结构草案并在临时 MySQL 8.4 上验证（73/73）。
 - 2026-10-21：按批准的目录结构建立仓库骨架；规格拆分为 `docs/01-requirements`、`02-solution`、`03-design`、`06-releases/v1.0/scope.md`；新增 ADR 0001–0007；数据库草案拆分为 `db/migrations/0001_init.sql` 与 `db/roles.sql` 并重新验证。
