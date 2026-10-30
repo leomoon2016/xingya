@@ -20,7 +20,7 @@ flowchart LR
     NGX["Nginx：HTTPS；主站与后台两个站点的静态文件；/api 反向代理（主站拒绝 /api/v1/admin）"]
     APP["xingya 服务（Node 24 + Fastify 5，systemd，单进程）\n11 个模块 + 调度器 + AI 任务执行器（≤2 并发，含 AI 角色执行器）"]
     PIP["Piper / ffmpeg\n一次性进程（独立 cgroup ≤350 MB）"]
-    DB[("MySQL 8.4\n127.0.0.1 / Unix socket")]
+    DB[("PostgreSQL 16\n127.0.0.1 / Unix socket")]
     BK["备份定时器 03:30\n本地 14 份"]
     AL["资源告警定时器 5 分钟"]
   end
@@ -46,20 +46,20 @@ flowchart LR
   BK -->|ossutil| OSS
   AL -->|告警邮件| SMTP
   GH -->|SSH 部署| ECS
-  Ops -->|SSH 隧道 → mysqld.sock| DB
+  Ops -->|SSH 隧道 → postgres socket| DB
 ```
 
 ## 3.2 技术栈
 | 层 | 选型 | 说明 |
 | --- | --- | --- |
 | 前端 | React 19、Vite、React Router、TanStack Query、vite-plugin-pwa（Workbox）、CSS Modules | 两个前端应用：`apps/web`（孩子端与家长中心两个懒加载路由块，可安装 PWA）与 `apps/admin`（系统管理端，独立构建、独立子域名与 CSP，不做 PWA；ADR 0015），共享 `packages/ui` 主题；伙伴与呀哈哈家族动画用“关键帧图片 + 动效模板”客户端渲染（CSS/Web Animations） |
-| 服务端 | Node 24 LTS、TypeScript（strict）、Fastify 5、Zod（请求/响应/课程文档/AI 输出共用）、Kysely、mysql2、pino、nodemailer、阿里云 OSS SDK | 单进程；时间统一通过可注入的 `Clock` 获取（测试可控） |
-| 数据库 | MySQL 8.4 LTS、InnoDB、utf8mb4、REPEATABLE READ | 连接 `time_zone='+00:00'`；所有 DATETIME 存 UTC；任务队列也在 MySQL |
+| 服务端 | Node 24 LTS、TypeScript（strict）、Fastify 5、Zod（请求/响应/课程文档/AI 输出共用）、Kysely、pg、pino、nodemailer、阿里云 OSS SDK | 单进程；时间统一通过可注入的 `Clock` 获取（测试可控） |
+| 数据库 | PostgreSQL 16、UTF8、默认 READ COMMITTED（应用按需事务） | 连接 `TimeZone=UTC`；所有 timestamptz 存 UTC；任务队列也在 PostgreSQL |
 | 文档抽取 | 在 worker 线程中抽取 PDF 文字层、docx、pptx 文本（`resourceLimits` 限制堆 128 MB、超时 60 秒；docx/pptx 解压总量 ≤ 100 MB、条目数 ≤ 2000，防压缩炸弹；不执行宏、不解析外部链接）；照片与扫描版 PDF 的页面交给**视觉模型**识字（不用专门的 OCR 服务，ADR 0022） | 扫描版 PDF 逐页渲染成图片后识字，按页计费 |
 | 语音 | Piper（一次性进程，安装在服务器 `/opt/xingya/piper`）、ffmpeg（编码 MP3、变调） | 只在发布/设计任务中运行，无常驻语音服务 |
 | AI 提供方 | 聊天 / 视觉 / 图像三个适配器（OpenAI 兼容接口 + 百炼异步图像接口），厂商、地址与模型在后台“模型配置”分别设置，默认阿里云百炼（[ADR 0022](../adr/0022-llm-vision-image-providers.md)）；邮件默认 DirectMail | 生成结果必须通过 Zod 模式校验；Key 加密存库 |
 | 存储与分发 | 阿里云 OSS + CDN | 素材按内容哈希命名，永久缓存 |
-| 测试 | Vitest（`apps/api/test/{unit,integration,concurrency,safety}`）、Playwright（`apps/web/e2e`、`apps/admin/e2e`）、`tools/safety-eval`（儿童安全评测） | 集成测试用 CI 中真实 MySQL 8.4；AI、OSS、Piper 用桩 |
+| 测试 | Vitest（`apps/api/test/{unit,integration,concurrency,safety}`）、Playwright（`apps/web/e2e`、`apps/admin/e2e`）、`tools/safety-eval`（儿童安全评测） | 集成测试用 CI 中真实 PostgreSQL 16；AI、OSS、Piper 用桩 |
 | 运维 | Nginx、systemd、GitHub Actions、ossutil、age（备份加密） | 无容器编排 |
 
 ## 仓库目录结构（已批准；2026-10-21 按设计变更、第 10 部分与目录调整〔ADR 0015〕更新）
@@ -266,14 +266,14 @@ xingya/
 │   │   └── backlog.md
 │   ├── adr/
 │   │   ├── 0001-modular-monolith.md
-│   │   ├── 0002-mysql-local-only-ssh-tunnel.md
+│   │   ├── 0023-postgres-local-only-ssh-tunnel.md
 │   │   ├── 0003-content-as-code-build-time-tts.md
 │   │   ├── 0004-append-only-star-ledger.md
 │   │   ├── 0005-web-only-pwa-launch.md
 │   │   ├── 0006-cross-family-social-safeguards.md
 │   │   ├── 0007-family-as-tenant.md
 │   │   ├── 0008-db-versioned-courses-word-bank.md
-│   │   ├── 0009-studio-mysql-job-queue.md
+│   │   ├── 0024-studio-postgres-job-queue.md
 │   │   ├── 0010-oss-cdn-publish-time-piper.md
 │   │   ├── 0011-fragments-second-currency.md
 │   │   ├── 0012-server-decided-discovery-ai-filled-rules.md
@@ -435,6 +435,6 @@ xingya/
 | 账本对账 | 每天 04:00（UTC+8） | 每个孩子每个币种 `SUM(delta)` = `balances.balance` = 最后一行 `balance_after`；`yahaha_styles.placed_total` = 该款式藏匿点数；不一致写审计并发系统管理员告警 |
 | 数据清理 | 每天 04:30（UTC+8） | AI 元数据 > 90 天、幂等记录 > 30 天、过期会话/令牌、已发送邮件正文（发送后即清空，此处兜底）、发送完成 > 180 天的邮件行、已结束 > 180 天的 AI 任务参数中的资料文本、90 天未被引用的草稿素材归档、AI 运行步骤（`agent_run_steps`）> 180 天（运行汇总 `agent_runs` 保留） |
 
-调度器在任务执行时用 MySQL `GET_LOCK('xingya:job:<name>', 0)` 防止重叠执行（例如部署切换瞬间两个进程并存）；AI 任务的并发由数据库槽位保证，与 `GET_LOCK` 无关。
+调度器在任务执行时用 PostgreSQL `pg_try_advisory_lock(hashtext('xingya:job:'||name))` 防止重叠执行（例如部署切换瞬间两个进程并存）；AI 任务的并发由数据库槽位与 `FOR UPDATE SKIP LOCKED` 保证，与 advisory lock 分工不同。
 
 > 各模块的接口见 `docs/03-design/modules/`；部署细节见 [deployment.md](deployment.md)。

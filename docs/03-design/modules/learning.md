@@ -69,7 +69,7 @@ sequenceDiagram
   participant S as stars
   participant CP as companion
   participant D as discovery
-  participant DB as MySQL
+  participant DB as PostgreSQL
   C->>API: POST /levels/:levelId/plays（X-Client-Request-Id: R）
   API->>CT: checkAccess(child, 'start')
   API->>L: startLevelPlay

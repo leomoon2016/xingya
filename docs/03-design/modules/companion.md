@@ -70,7 +70,7 @@ sequenceDiagram
   participant API as 服务
   participant CP as companion
   participant S as stars
-  participant DB as MySQL
+  participant DB as PostgreSQL
   K->>API: POST /companion/adoptions {speciesId, payWith, expectedPrice}（请求 ID R）
   API->>DB: BEGIN；INSERT idempotency(R)
   API->>CP: adopt

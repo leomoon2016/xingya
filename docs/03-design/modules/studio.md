@@ -1,6 +1,6 @@
 # AI 工作室（studio）· 模块设计
 
-> 本文为 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../../06-releases/v1.0/changes.md)）新增。决策见 [ADR 0009](../../adr/0009-studio-mysql-job-queue.md)、[ADR 0010](../../adr/0010-oss-cdn-publish-time-piper.md)、[ADR 0013](../../adr/0013-keyframe-motion-template-animation.md)、[ADR 0014](../../adr/0014-skills-and-agent-roles.md)。技能库、AI 角色与角色执行器见 [Skill 与 AI 角色 · 模块设计](agents.md)（同属本模块）。
+> 本文为 2026-10-21 设计变更（用户已批准，见 [v1.0 变更记录](../../06-releases/v1.0/changes.md)）新增。决策见 [ADR 0009](../../adr/0024-studio-postgres-job-queue.md)、[ADR 0010](../../adr/0010-oss-cdn-publish-time-piper.md)、[ADR 0013](../../adr/0013-keyframe-motion-template-animation.md)、[ADR 0014](../../adr/0014-skills-and-agent-roles.md)。技能库、AI 角色与角色执行器见 [Skill 与 AI 角色 · 模块设计](agents.md)（同属本模块）。
 > 2026-10-22 用户决定（[ADR 0022](../../adr/0022-llm-vision-image-providers.md)）：不用 OCR 服务，**视觉模型识字**；聊天 / 视觉 / 图像三类模型分别在“模型配置”（`ai_providers`）设置，默认阿里云百炼，Key 加密存库。回归老系统（[ADR 0020](../../adr/0020-revert-to-old-system.md)）：扫码上传（`material_upload_links`）、资料 ZIP 与软删除、语音设置（`studio.voices`）、旧课程导入命令。
 
 ## 职责
@@ -56,7 +56,7 @@ checkPrompt(text): {ok} | {blocked: term[]}
 ```
 
 ## 执行器
-- 每 2 秒：`SELECT … FROM ai_jobs WHERE status='queued' ORDER BY queued_at LIMIT 5`；逐个尝试 `UPDATE ai_jobs SET status='running', running_slot = s, started_at = NOW(3) WHERE id = ? AND status = 'queued'`（`s` 取 1 或 2）。槽位唯一键冲突 = 已满；`needs_local = 1` 的任务在本机进程槽（生成列 `local_slot` 唯一）冲突时跳过、留在队列。
+- 每 2 秒：`SELECT … FROM ai_jobs WHERE status='queued' ORDER BY queued_at FOR UPDATE SKIP LOCKED LIMIT 5`；在同一事务内 `UPDATE … SET status='running', running_slot = s, started_at = NOW() WHERE id = ? AND status = 'queued'`（`s` 取 1 或 2）。槽位唯一键冲突 = 已满；`needs_local` 任务在本机进程槽（生成列 `local_slot` 唯一）冲突时回滚该抢占、留在队列。
 - 运行中每 15 秒 `heartbeat_at`；启动时与每分钟回收 `heartbeat_at < NOW() − 2 分钟` 的任务：释放槽位，`attempts < 3` 回到 `queued`，否则 `failed`。
 - 结束：一个事务内写 `status`、`result`/`error`、`actual_cost_fen`（≤ 预估），`ai_budget_months`：`reserved −= 预估`、`spent += 实际`；释放槽位。
 - 本机进程：`systemd-run --user --scope -p MemoryMax=350M -p RuntimeMaxSec=120 <bin> …`，参数数组传递，不经 shell；输入文本只允许字母、数字、常用标点与中文字符；临时文件在 `/var/lib/xingya/tmp/<jobId>/`，结束即删。

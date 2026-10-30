@@ -97,7 +97,7 @@
 - 时长：心跳累加（多设备、重复心跳、长间隔）、时段判断（家庭时区、夏令时时区）、宽限期、加时。
 - 连续天数、排行榜周计算、课程开放规则、关卡解锁（含版本间增删关卡）、拼写判分规范化、PIN/密码锁定、价格复核、赠送每日上限。
 
-### 10.2 集成测试（Vitest + 真实 MySQL 8.4，CI 服务容器）
+### 10.2 集成测试（Vitest + 真实 PostgreSQL 16，CI 服务容器）
 - 迁移从空库应用成功；授权实测（应用账号对只追加表与已发布版本 UPDATE/DELETE 被拒、列级授权之外的列更新被拒）。
 - 幂等：同一请求 ID 并发 10 次开始作答/完成/购买/领养/赠送/兑换，只产生一条记录与一组流水；同一藏匿点并发揭晓 10 次只发放一次；不同请求体复用 ID → 409。
 - 作答：开始响应不含答案字段（对 10 种题型逐一断言）；第二次作答不改判分；作答不过期，同一关同时只有一次未完成作答（再次开始返回原作答）；作答中途发布新版本不影响该作答。
@@ -110,7 +110,7 @@
 - 课程发布：草稿 → 审核 → 发布生成新版本；示例课程导入为草稿，重复导入不产生重复草稿。
 
 ### 10.3 内置数据（`seeds/`）校验
-`tools/validate-seeds` 校验 `seeds/course-templates/`、示例课程、徽章初始数据、种子宠物（`seeds/pets/`）、短语、安全词表、提示词禁止词表；示例课程同时跑课程自动检查（K 规则），CI 失败即阻断。默认技能 `seeds/skills/`（SKILL.md 可解析、模式可编译、工具都在目录中、无发布类工具）、默认角色 `seeds/agents/defaults.json`（挂载的技能都存在、受众一致、儿童角色挂载 `child-safety`）、系统守则 `seeds/safety/agent-guard.md` 与儿童安全测试集 `seeds/safety/tests/` 同样在此校验；儿童技能或安全测试集变化时，CI 另运行 `tools/safety-eval`（儿童安全评测）。服务端测试分布：`apps/api/test/unit`（单元）、`integration`（真实 MySQL）、`concurrency`（并发与幂等）、`safety`（儿童安全规则）。
+`tools/validate-seeds` 校验 `seeds/course-templates/`、示例课程、徽章初始数据、种子宠物（`seeds/pets/`）、短语、安全词表、提示词禁止词表；示例课程同时跑课程自动检查（K 规则），CI 失败即阻断。默认技能 `seeds/skills/`（SKILL.md 可解析、模式可编译、工具都在目录中、无发布类工具）、默认角色 `seeds/agents/defaults.json`（挂载的技能都存在、受众一致、儿童角色挂载 `child-safety`）、系统守则 `seeds/safety/agent-guard.md` 与儿童安全测试集 `seeds/safety/tests/` 同样在此校验；儿童技能或安全测试集变化时，CI 另运行 `tools/safety-eval`（儿童安全评测）。服务端测试分布：`apps/api/test/unit`（单元）、`integration`（真实 PostgreSQL）、`concurrency`（并发与幂等）、`safety`（儿童安全规则）。
 
 ### 10.4 端到端（Playwright，Chromium + WebKit）
 孩子端与家长中心用例在 `apps/web/e2e/`；后台用例（工作室、技能与 AI 角色、审核发布、家庭与举报、设置）在 `apps/admin/e2e/`，跨两个应用的用例（如“发布 → 孩子端看到新版本”）放在 `apps/admin/e2e/` 并同时打开两个站点。

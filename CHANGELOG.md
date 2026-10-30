@@ -1,5 +1,10 @@
 # 更新日志
 
+## 2026-10-30
+
+- 数据库引擎由 MySQL 8.4 重新设计为 **PostgreSQL 16**（localhost / Unix socket + SSH 隧道；`pg` + Kysely；`timestamptz` / `jsonb` / `boolean`；库内队列改为 `FOR UPDATE SKIP LOCKED`，见 [ADR 0023](docs/adr/0023-postgres-local-only-ssh-tunnel.md)、[ADR 0024](docs/adr/0024-studio-postgres-job-queue.md) 与 [设计规格](docs/superpowers/specs/2026-10-30-postgresql-redesign.md)）。`db/migrations/0001_init.sql` 与 `db/roles.sql` 原地改写；在本机 PostgreSQL 16.9 验证 82 表可应用，`db/verify` 冒烟 20/20。无线上数据迁移。应用业务代码未改，仅文档与草案 schema。
+
+
 本项目的重要变更记录在此。格式参考 Keep a Changelog；版本发布后对应条目移入版本号下。
 
 ## 未发布
@@ -8,7 +13,7 @@
 - 2026-10-24：整套 UI 设计交付——后台线框（studio/课程/伙伴/家庭/模型配置/语音/审计等）；三端高保真静态 HTML（`docs/04-ui-design/mockups/`，共享 `_shared` 样式）；组件规范扩写；种子 SVG 未做。
 - 2026-10-24：家长中心线框图——`docs/04-ui-design/wireframes/parent/`（shell、dashboard、overview、approvals、rewards、controls、reports、settings、inbox）；与孩子小铺兑换审批 / 累计核销闭环；含任务单 17 家庭与账号设置页；后台线框未做。
 - 2026-10-23：孩子端界面设计起步——新增设计令牌 `docs/04-ui-design/tokens/design-tokens.json`（色板/字体取自原型 D，断点与触控对齐 nfr §8.4）；填写孩子端线框图（shell、login、learn、review、wordbook、shop、companion、social、discovery、album、chat、inbox、footprint、settings），更新 wireframes 索引；家长/后台线框与 mockups 未做。
-- 2026-10-21：全新系统设计规格（已由用户逐节确认），数据库结构草案并在临时 MySQL 8.4 上验证（73/73）。
+- 2026-10-21：全新系统设计规格（已由用户逐节确认），数据库结构草案并在临时 PostgreSQL 16 上验证（73/73）。
 - 2026-10-21：按批准的目录结构建立仓库骨架；规格拆分为 `docs/01-requirements`、`02-solution`、`03-design`、`06-releases/v1.0/scope.md`；新增 ADR 0001–0007；数据库草案拆分为 `db/migrations/0001_init.sql` 与 `db/roles.sql` 并重新验证。
 - 2026-10-21：设计变更（用户已批准）——新增伙伴模块（companion）、呀哈哈发现（discovery）、AI 工作室（studio）三个模块与 AI 生成课程，全部进入 v1.0，排期调整为约 19 周；新增 ADR 0008–0013；新增 `docs/03-design/course-model.md`（由 `content-pack.md` 改写）、各新模块的需求与设计文档、Web 端 `companion`/`discovery`/`album`/`admin/studio` 功能目录；新增整体评审报告 `docs/reviews/2026-10-21-整体评审.md`。
 - 2026-10-21：第 10 部分“Skill 管理与 AI 角色”（用户已批准，进入 v1.0）——技能数据库版本化（SKILL.md 兼容导入导出、无可执行代码、强制儿童安全与原创规则）、技能库后台、7 个默认 AI 角色（课程设计师、美术设计师、配音师、活动策划、质检员、运营分析师、呀哈哈队长）、角色的技能配置、角色执行器（studio，≤ 20 步）、多角色流水线、一句话框与 `@角色`、任务克隆重跑与快捷任务；新增需求 `docs/01-requirements/modules/agents.md`、设计 `docs/03-design/modules/agents.md`、ADR 0014；新增 `content/skills/`、`content/agents/` 与 Web 端 `admin/studio/{skills,agents,runs}` 目录说明；整体评审追加“第十节补充评审”。
@@ -23,15 +28,15 @@
 - 2026-10-22：恢复积分（用户决定，[ADR 0017](docs/adr/0017-points-currency.md)）——规则与旧系统完全一致：听发音 +0.1、复习答对 +1（每天 ≤ 30）、单词本听发音（每天 ≤ 10，v1.0 无单词本暂不产生）、跟随伙伴按等级附赠，10 积分换 1 星；复习不再发星星；`0001_init.sql` 的 `ledger`/`balances` 增加 `point` 币种，`plays` 增加伙伴等级快照，日报增加积分列；数据库重新验证 255/255。
 - 2026-10-22：正式系统一直使用马里奥（用户决定，[ADR 0018](docs/adr/0018-mario-game-partner.md)）——恢复游戏搭档（马里奥、林克），第三方 IP 规则增加具名例外，素材放 `seeds/partners/`，AI 工作室仍不生成任天堂角色；新增术语“积分”“换星”“游戏搭档”。
 - 2026-10-22：设备与屏幕（用户决定）——孩子端以平板和电脑横屏为主、手机竖屏可用（紧凑布局）；家长中心响应式；后台桌面优先。新增 [nfr §8.4](docs/01-requirements/nfr.md#84-设备与屏幕)、开放问题 Q29；PRD、界面设计说明、v1.0 变更记录与任务单 03 同步。
-- 2026-10-21：课程改为存数据库并版本化（已发布版本不可修改）、共享词库、题目拆为可见部分与答案部分并每次打乱选项；Piper 改为发布时一次性运行；素材改用 OSS + CDN；生成前费用预估与月度预算上限。数据库草案 `0001_init.sql` 直接修订为 55 张表（业务 52 + 平台 3），`roles.sql` 同步更新，在临时 MySQL 8.4.6 上重新验证 155/155 通过。所有文档只使用 Markdown。
+- 2026-10-21：课程改为存数据库并版本化（已发布版本不可修改）、共享词库、题目拆为可见部分与答案部分并每次打乱选项；Piper 改为发布时一次性运行；素材改用 OSS + CDN；生成前费用预估与月度预算上限。数据库草案 `0001_init.sql` 直接修订为 55 张表（业务 52 + 平台 3），`roles.sql` 同步更新，在临时 PostgreSQL 16 上重新验证 155/155 通过。所有文档只使用 Markdown。
 - 2026-10-21：目录改名（`git mv`，保留历史）——`content/` → `seeds/`（`templates` → `course-templates`，`english` → `samples/english`）、`packages/content-schema` → `packages/seed-schema`、`tools/validate-content` → `tools/validate-seeds`；`apps/web/src/features/` 下孩子端功能移入 `child/`，`admin/` 移出为 `apps/admin/src/features/`；发布目录改为 `releases/<ts>/{api,web,admin,seeds}`；`xingya skills:seed` 与 `xingya shop:import` 合并为幂等的 `xingya seeds:apply`；ADR 0001、0005 修订；数据库结构不变（只改迁移注释中的路径），重新验证通过。
 - ADR 0003 标记为“已被 ADR 0008、0010 取代”；ADR 0004 由 ADR 0011 修订（账本改名 `ledger` 并支持碎片）。
 
-- 2026-10-21：数据库草案 `0001_init.sql` 新增 10 张表（skills、skill_versions、skill_allowed_agents、agents、agent_versions、agent_skills、agent_budget_months、quick_tasks、agent_runs、agent_run_steps），`ai_chat_usage` 增加角色版本与费用，系统设置增加 `agents.*`，共 65 张表（业务 62 + 平台 3）；`roles.sql` 同步授权；验证脚本新增授权全覆盖与 Skill/AI 角色检查，在临时 MySQL 8.4.6 上重新验证 207/207 通过。原 AI 任务处理器改为“AI 角色 + 技能 + 内置工具”（系统任务 `publish_audio`、`material_extract` 保留）；呀哈哈队长聊天费用改为计入预算（修订 Q13）；排期调整为约 20.5 周。
+- 2026-10-21：数据库草案 `0001_init.sql` 新增 10 张表（skills、skill_versions、skill_allowed_agents、agents、agent_versions、agent_skills、agent_budget_months、quick_tasks、agent_runs、agent_run_steps），`ai_chat_usage` 增加角色版本与费用，系统设置增加 `agents.*`，共 65 张表（业务 62 + 平台 3）；`roles.sql` 同步授权；验证脚本新增授权全覆盖与 Skill/AI 角色检查，在临时 PostgreSQL 16 上重新验证 207/207 通过。原 AI 任务处理器改为“AI 角色 + 技能 + 内置工具”（系统任务 `publish_audio`、`material_extract` 保留）；呀哈哈队长聊天费用改为计入预算（修订 Q13）；排期调整为约 20.5 周。
 
 - 2026-10-21：统一术语（以根目录 [GLOSSARY.md](GLOSSARY.md) 为准）——“学习伙伴”改称“伙伴”（模块称“伙伴模块（companion）”），“学习陪伴/当前陪伴”改称“跟随伙伴”；评分统一称“星级”，非学习来源的星星统称“奖励星”；系统管理员发布前检查称“审核”、家长处理孩子申请称“审批”；“学生”改称“孩子”（如“孩子视角试玩”）、单用的“管理员”改称“系统管理员”、单用的“呀哈哈”改为“呀哈哈队长/呀哈哈家族”。只改文字与注释，表名、列名、接口、枚举与数据库结构不变；`docs/README.md`、`AGENTS.md` 加入术语表链接。
 
-- 2026-10-21：保留单元层（用户决定，[ADR 0016](docs/adr/0016-unit-layer.md)，修订 ADR 0008）——内容层级改为年级 > 课程（一册，ID 如 `en-g1-a`）> 单元（`unit_key` 如 `u03`，每单元 3–6 关）> 关卡 > 题目；数据库草案 `0001_init.sql` 新增 `units`（随版本只追加）与 `unit_progress`，`levels` 改为属于单元（复合外键保证同一版本，`level_key` 单元内唯一），`level_progress` 主键加入 `unit_key`，投放规则范围改为 `scope.targets`（课程/单元/关卡，JSON Schema CHECK），`daily_reports.units_completed`，系统设置 `content.unit_levels`；共 67 张表（业务 64 + 平台 3），`roles.sql` 同步授权，验证脚本新增单元检查并修正术语，在临时 MySQL 8.4.6 上重新验证 236/236 通过。需求、设计、API（单元增删排序、按单元生成与预估）、模板与示例课程 README、开放问题 Q26–Q28、里程碑说明同步更新；排期不变。种子数据中 AI 角色描述的术语同步修正。
+- 2026-10-21：保留单元层（用户决定，[ADR 0016](docs/adr/0016-unit-layer.md)，修订 ADR 0008）——内容层级改为年级 > 课程（一册，ID 如 `en-g1-a`）> 单元（`unit_key` 如 `u03`，每单元 3–6 关）> 关卡 > 题目；数据库草案 `0001_init.sql` 新增 `units`（随版本只追加）与 `unit_progress`，`levels` 改为属于单元（复合外键保证同一版本，`level_key` 单元内唯一），`level_progress` 主键加入 `unit_key`，投放规则范围改为 `scope.targets`（课程/单元/关卡，JSON Schema CHECK），`daily_reports.units_completed`，系统设置 `content.unit_levels`；共 67 张表（业务 64 + 平台 3），`roles.sql` 同步授权，验证脚本新增单元检查并修正术语，在临时 PostgreSQL 16 上重新验证 236/236 通过。需求、设计、API（单元增删排序、按单元生成与预估）、模板与示例课程 README、开放问题 Q26–Q28、里程碑说明同步更新；排期不变。种子数据中 AI 角色描述的术语同步修正。
 
 ### 移除
 - `tools/build-audio`（构建期生成音频，改为发布时生成）；课程包（`GET /pack`）与内容导入流程。

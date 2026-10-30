@@ -1,6 +1,6 @@
 # 09: 备份与告警
 
-**What to build:** 服务器每天 03:30（UTC+8）自动备份数据库：`mysqldump --single-transaction --routines --triggers xingya | gzip` 写到 `/var/backups/xingya/xingya-YYYYMMDD.sql.gz`，保留 14 份，`gunzip -t` 校验，用 age 公钥加密后上传到 OSS 的 `xingya/db/`，并把最近一次结果写入 `backup-status.json`。每 5 分钟运行一次的告警脚本在磁盘、内存、服务、备份、证书出问题时给运维发邮件。运维有一份恢复手册，并且确实用某次备份恢复成功过。
+**What to build:** 服务器每天 03:30（UTC+8）自动备份数据库：`pg_dump --single-transaction --routines --triggers xingya | gzip` 写到 `/var/backups/xingya/xingya-YYYYMMDD.sql.gz`，保留 14 份，`gunzip -t` 校验，用 age 公钥加密后上传到 OSS 的 `xingya/db/`，并把最近一次结果写入 `backup-status.json`。每 5 分钟运行一次的告警脚本在磁盘、内存、服务、备份、证书出问题时给运维发邮件。运维有一份恢复手册，并且确实用某次备份恢复成功过。
 
 依据：[deployment §9.3–9.4](../../../docs/02-solution/deployment.md)、[nfr §8.1](../../../docs/01-requirements/nfr.md)“备份”、[roadmap R11](../../../docs/02-solution/roadmap.md)。上传 OSS 使用 07 中配置的私有桶与只写 `xingya/db/` 的备份子账号。
 

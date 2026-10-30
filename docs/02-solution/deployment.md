@@ -12,7 +12,7 @@
 
 | 进程 | 预算 | 约束 |
 | --- | --- | --- |
-| MySQL | ≈ 450 MB | `innodb_buffer_pool_size=256M`、`performance_schema=OFF`、`max_connections=40` |
+| PostgreSQL | ≈ 350–450 MB | `shared_buffers=128MB`、`work_mem=4MB`、`maintenance_work_mem=64MB`、`effective_cache_size=512MB`、`max_connections=40` |
 | Node（xingya 服务，含任务执行器） | ≈ 400 MB | `--max-old-space-size=384`，systemd `MemoryMax=600M`；AI 提供方调用都是 HTTP，不占本机大内存；资料文本抽取在 worker 线程中流式处理（堆上限 128 MB、解压总量 ≤ 100 MB），单文件 ≤ 20 MB |
 | Piper / ffmpeg 一次性进程 | ≤ 350 MB，**只在音频任务运行时存在** | `systemd-run --user --scope -p MemoryMax=350M`，独立 cgroup；数据库槽位保证同一时刻最多 1 个；每段文本超时 120 秒 |
 | Nginx | ≈ 20 MB | |
@@ -25,13 +25,13 @@
 ### 9.2 发布流水线（GitHub Actions）
 1. `check`：lint、typecheck、模块边界检查、单元测试。
 2. `seeds`：`tools/validate-seeds` 校验 `seeds/`（模板、示例课程、徽章、种子宠物、短语、头像、安全词表、默认技能与角色挂载；不生成音频）；`tools/safety-eval` 在儿童技能或安全测试集变化时运行。
-3. `integration`：服务容器 `mysql:8.4`，应用全部迁移（从空库）→ 授权实测 → 集成测试。
-4. `e2e`：构建 web、admin 与服务，启动 MySQL、服务、聊天 / 视觉 / 图像模型桩、Piper 桩、本地 OSS 目录与 SMTP 捕获器，运行 `apps/web/e2e` 与 `apps/admin/e2e`；检查 web 构建产物中不含后台代码（路由、组件名与 `/api/v1/admin` 字符串扫描）。
+3. `integration`：服务容器 `postgres:16`，应用全部迁移（从空库）→ 授权实测 → 集成测试。
+4. `e2e`：构建 web、admin 与服务，启动 PostgreSQL、服务、聊天 / 视觉 / 图像模型桩、Piper 桩、本地 OSS 目录与 SMTP 捕获器，运行 `apps/web/e2e` 与 `apps/admin/e2e`；检查 web 构建产物中不含后台代码（路由、组件名与 `/api/v1/admin` 字符串扫描）。
 5. `deploy`（仅 main，GitHub Environment 保护）：SSH（专用部署密钥，固定 known_hosts）上传发布包到 `/opt/xingya/releases/<ts-version>/`（`api/`、`web/`、`admin/`、`seeds/` 四个子目录）→ `xingya migrate`（migrator 账号，按版本号应用 `db/migrations` 中未应用的文件，校验已应用文件的 checksum）→ root 执行 `db/roles.sql`（幂等，补齐新表授权）→ `xingya seeds:apply`（migrator 账号，幂等：只插入 `seeds/` 中缺失的徽章、种子宠物、默认技能与角色挂载，从不删除已有行、不覆盖后台修改；唯一例外是 `origin = seed` 的种子宠物更新名称、描述与图片，写审计，ADR 0021）→ 切换 `/opt/xingya/current` 软链接 → `systemctl restart xingya` → 30 秒内 `/api/v1/health` 返回新版本，否则切回上一个软链接并重启、流水线失败。
 - 迁移只前进，并遵守“先扩展、后收缩”：任何迁移都必须与上一个发布的代码兼容，回滚只回代码不回库。
 - 部署**不导入任何课程**：课程、伙伴、呀哈哈家族款式在后台制作与发布，存在数据库与 OSS；发布新代码不影响已发布内容。`seeds:apply` 只补齐内置数据中缺失的行；`seeds/samples/` 示例课程只在运维手动执行 `xingya course:import` 时导入。模板、安全词表、短语、头像由 api 启动时从发布目录的 `seeds/` 读取，不入库。
 - 技能与 AI 角色（第 10 部分）：角色执行器在 xingya 服务进程内运行（属于“任务执行器”，不新增进程或内存预算；技能里没有可执行代码，不会启动任何子进程）。系统守则 `seeds/safety/agent-guard.md` 随发布包更新，工具目录随 api 更新。默认技能与角色挂载由每次部署的 `xingya seeds:apply` 补齐（已存在的技能不覆盖，只导入缺失的 v1 草稿与白名单），之后技能与角色只在后台修改；部署不会覆盖后台的修改。
-- 首次部署：`deploy/scripts/bootstrap.sh`（root 执行一次）安装 Node 24、MySQL 8.4、Nginx、ffmpeg，安装 Piper 到 `/opt/xingya/piper/bin` 与声音模型到 `/opt/xingya/piper/voices`（校验 SHA-256），创建 `xingya` 系统用户（`loginctl enable-linger xingya`）、目录（含 `/var/lib/xingya/tmp`）、swap、systemd 单元，执行 `db/migrations/0001_init.sql` 第 0 段（建库）与 `db/roles.sql`、设置账号口令；之后运行 `xingya admin:create`（`xingya seeds:apply` 已在部署步骤中执行），可选 `xingya course:import` 导入示例课程草稿。
+- 首次部署：`deploy/scripts/bootstrap.sh`（root 执行一次）安装 Node 24、PostgreSQL 16、Nginx、ffmpeg，安装 Piper 到 `/opt/xingya/piper/bin` 与声音模型到 `/opt/xingya/piper/voices`（校验 SHA-256），创建 `xingya` 系统用户（`loginctl enable-linger xingya`）、目录（含 `/var/lib/xingya/tmp`）、swap、systemd 单元，执行 `db/migrations/0001_init.sql` 第 0 段（建库）与 `db/roles.sql`、设置账号口令；之后运行 `xingya admin:create`（`xingya seeds:apply` 已在部署步骤中执行），可选 `xingya course:import` 导入示例课程草稿。
 
 ### 9.2a 对象存储与 CDN（阿里云 OSS）
 - 一个私有桶（与 ECS 同地域），前缀：`draft/`（草稿素材）、`materials/`（上传资料）、`pub/`（已发布素材）、`xingya/db/`（加密备份，见 §9.4）。
@@ -49,12 +49,12 @@
 
 ### 9.3 运行与监控
 - systemd：`xingya.service`（`Restart=always`、`RestartSec=2`、`User=xingya`、`EnvironmentFile=/etc/xingya/secrets.env`）；`xingya-backup.timer`（每日 03:30 UTC+8）；`xingya-alerts.timer`（每 5 分钟）。
-- 告警脚本（邮件，同类告警 6 小时内只发一次）：磁盘 ≥ 85%；可用内存 < 200 MB 连续两次或 swap 使用 > 1 GB；`xingya`/`mysql`/`nginx` 非 active；最近成功备份早于 26 小时；证书 14 天内到期（含 CDN 与后台子域名证书）。
+- 告警脚本（邮件，同类告警 6 小时内只发一次）：磁盘 ≥ 85%；可用内存 < 200 MB 连续两次或 swap 使用 > 1 GB；`xingya`/`postgresql`/`nginx` 非 active；最近成功备份早于 26 小时；证书 14 天内到期（含 CDN 与后台子域名证书）。
 - 应用内异常：对账不一致（星星或碎片）、邮件最终失败、5xx 突增（10 分钟 > 20 次）、AI 任务连续失败 3 次、本月 AI 预算使用超过 80% → 入队 `admin_alert` 邮件并在管理端“异常”页展示。
 
 ### 9.4 备份与恢复
 - 备份脚本把最近一次结果写入 `/var/backups/xingya/backup-status.json`，应用读取后在管理端“异常”页展示。
-- 每日 03:30：`mysqldump --single-transaction --routines --triggers xingya | gzip` → `/var/backups/xingya/xingya-YYYYMMDD.sql.gz`，保留 14 份；`gunzip -t` 校验；age 加密后 `ossutil cp` 到 `oss://<bucket>/xingya/db/`，OSS 生命周期规则 14 天删除。
+- 每日 03:30：`pg_dump --single-transaction --routines --triggers xingya | gzip` → `/var/backups/xingya/xingya-YYYYMMDD.sql.gz`，保留 14 份；`gunzip -t` 校验；age 加密后 `ossutil cp` 到 `oss://<bucket>/xingya/db/`，OSS 生命周期规则 14 天删除。
 - 恢复手册：从 OSS 取最新加密备份 → 解密 → 在新库导入 → 指向并启动服务。上线前演练一次并记录用时（目标 RTO ≤ 2 小时）；之后每季度演练一次。
 
 > 服务器目录布局与“哪些内容上服务器”见 [overview.md](overview.md)。

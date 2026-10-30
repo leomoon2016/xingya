@@ -1,6 +1,6 @@
 # studio —— AI 工作室
 
-**职责**：任务队列（MySQL，最多 2 个并发、本机进程最多 1 个）、模型配置与提供方适配器（聊天、视觉、图像、TTS；没有 OCR，ADR 0022）、素材库（OSS/CDN）、资料库、费用预估与月度预算、提示词禁止词表；**技能库与 AI 角色**（技能与版本、SKILL.md 导入导出、角色与版本、技能挂载、工具目录、角色执行器〔工具循环 ≤ 20 步〕、流水线、快捷任务、角色预算、呀哈哈队长的同步执行）。只依赖 platform；业务模块向它注册内置工具（`registerTool`，没有发布类工具），系统任务 `publish_audio`、`material_extract` 用 `registerHandler`。
+**职责**：任务队列（PostgreSQL + SKIP LOCKED，最多 2 个并发、本机进程最多 1 个）、模型配置与提供方适配器（聊天、视觉、图像、TTS；没有 OCR，ADR 0022）、素材库（OSS/CDN）、资料库、费用预估与月度预算、提示词禁止词表；**技能库与 AI 角色**（技能与版本、SKILL.md 导入导出、角色与版本、技能挂载、工具目录、角色执行器〔工具循环 ≤ 20 步〕、流水线、快捷任务、角色预算、呀哈哈队长的同步执行）。只依赖 platform；业务模块向它注册内置工具（`registerTool`，没有发布类工具），系统任务 `publish_audio`、`material_extract` 用 `registerHandler`。
 
 **拥有的表**（16 张）：ai_jobs, ai_budget_months, assets, materials, material_upload_links, ai_providers；skills, skill_versions, skill_allowed_agents, agents, agent_versions, agent_skills, agent_budget_months, quick_tasks, agent_runs, agent_run_steps。
 

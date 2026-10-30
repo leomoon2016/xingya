@@ -1,5 +1,8 @@
 # W3–4 家庭、账号、登录 Implementation Plan
 
+> **2026-10-30 PostgreSQL**：脚手架与集成测试目标库改为 PostgreSQL 16；驱动 `pg`；备份 `pg_dump`；队列抢占 `FOR UPDATE SKIP LOCKED`（ADR 0023 / 0024）。下列任务中若仍出现历史 PostgreSQL 字样，以本注记为准。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 家长凭注册码注册并登录、邀请/找回密码、孩子档案与头像墙 PIN、孩子密码登录、会话远程下线、系统管理员 TOTP 登录并签发注册码、家长账号与家庭设置（任务单 17）；开发环境邮件经发件箱 + 捕获器可完成 e2e。

@@ -2,9 +2,9 @@
 
 | 路径 | 内容 | 是否上服务器 |
 | --- | --- | --- |
-| `migrations/` | 版本化 SQL 迁移 `NNNN_名称.sql`，只前进；部署时由 migrator 账号按顺序应用 | 是（随 api 发布包部署） |
-| `roles.sql` | 角色、账号（@localhost，初始锁定）与按表/按列授权；root 在应用迁移之后执行，可重复执行 | 是（随 api 发布包部署） |
-| `dev-fixtures/` | 本地开发与 e2e 用的 SQL 示例行（测试夹具），从不部署；与顶层 `seeds/`（随发布包部署的内置数据文件，见 `seeds/README.md`）不同 | 否 |
-| `verify/` | 在临时 MySQL 8.4 上验证迁移与授权的脚本及结果 | 否 |
+| `migrations/` | 版本化 SQL 迁移 `NNNN_名称.sql`，只前进；部署时由 migrator 角色按顺序应用 | 是（随 api 发布包部署） |
+| `roles.sql` | PostgreSQL 角色与按表/按列授权；超级用户在应用迁移之后执行，可重复执行 | 是 |
+| `dev-fixtures/` | 本地开发与 e2e 用的 SQL 示例行（测试夹具），从不部署；与顶层 `seeds/` 不同 | 否 |
+| `verify/` | 在临时 PostgreSQL 16 上验证迁移与授权的脚本及结果 | 否 |
 
-`migrations/0001_init.sql` 是**草案**：因为还没有部署任何环境，2026-10-21 的设计变更（课程入库版本化、词库、伙伴、呀哈哈发现、AI 工作室）以及第 10 部分（Skill 管理与 AI 角色：10 张表、7 个默认角色与系统技能 `child-safety` 的种子）以及单元层（`units`、`unit_progress`，ADR 0016）直接修订本文件，而不是追加 0002。2026-10-22 又加入单词本 5 张表（ADR 0019），同日按回归老系统总规则（ADR 0020）与模型 / 邮件厂商可配置（ADR 0022）再加 10 张（学习卡、隐藏奖励、秘密路线、累计奖励余额与流水、伙伴互动与赠送、信箱通知、扫码上传链接、模型配置）。共 82 张表（业务 79 + 平台 3）。修订后已在临时 MySQL 8.4.6 上重新验证，结果见 `verify/result.txt`。**一旦有环境部署过 0001，之后的结构变更只能追加新的迁移文件。**
+`migrations/0001_init.sql` 是**草案**：因为还没有部署任何环境，历次设计变更直接修订本文件。**2026-10-30** 由 MySQL 8.4 原地改写为 **PostgreSQL 16**（见 [specs/2026-10-30-postgresql-redesign.md](../docs/superpowers/specs/2026-10-30-postgresql-redesign.md)、[ADR 0023](../docs/adr/0023-postgres-local-only-ssh-tunnel.md)、[ADR 0024](../docs/adr/0024-studio-postgres-job-queue.md)）。共 82 张表（业务 79 + 平台 3）。**一旦有环境部署过 0001，之后的结构变更只能追加新的迁移文件。**

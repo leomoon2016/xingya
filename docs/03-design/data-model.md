@@ -5,7 +5,7 @@
 
 ## 6. 数据模型
 
-完整 DDL 见 `db/migrations/0001_init.sql`（表）与 `db/roles.sql`（角色与授权）。共 82 张表（业务 79 + 平台 3）；188 个外键、227 个 CHECK、94 个非主键唯一键、19 个生成列（2026-10-22 新增单词本 5 张表，[ADR 0019](../adr/0019-wordbook-as-old-system.md)；同日回归老系统再增 10 张，[ADR 0020](../adr/0020-revert-to-old-system.md)）。全部 InnoDB / utf8mb4；时间 UTC；外键一律 RESTRICT；孩子与家长只停用/归档不硬删。
+完整 DDL 见 `db/migrations/0001_init.sql`（表）与 `db/roles.sql`（角色与授权）。共 82 张表（业务 79 + 平台 3）；188 个外键、227 个 CHECK、94 个非主键唯一键、19 个生成列（2026-10-22 新增单词本 5 张表，[ADR 0019](../adr/0019-wordbook-as-old-system.md)；同日回归老系统再增 10 张，[ADR 0020](../adr/0020-revert-to-old-system.md)）。全部 PostgreSQL / UTF8；时间 UTC；外键一律 RESTRICT；孩子与家长只停用/归档不硬删。
 
 ### 6.1 表清单（82 张）
 | 模块 | 表 | 用途 | 关键列 / 约束 |
@@ -119,7 +119,7 @@
 | 可删除 | sessions、auth_tokens、idempotency_requests、ai_chat_usage、email_outbox、course_overrides、blocks、agent_run_steps（180 天清理；不可改） |
 
 - 账号创建时 `ACCOUNT LOCK` 且无口令；服务器引导脚本从 `/etc/xingya/secrets.env` 读取口令执行 `ALTER USER … IDENTIFIED BY … ACCOUNT UNLOCK`。仓库中没有任何口令。
-- MySQL 配置：`bind-address=127.0.0.1`、`mysqlx=OFF`、`skip-name-resolve`、`local_infile=OFF`；安全组不开放 3306。运维访问：`ssh -L 3307:/run/mysqld/mysqld.sock xingya-ecs`，在本机连 `127.0.0.1:3307`，落到服务器上即为 socket 连接（匹配 `@localhost`）。
+- PostgreSQL 配置：只听本机 / Unix socket；`pg_hba.conf` 仅本机；安全组不开放 5432。运维访问：`ssh -L 5433:<postgres-unix-socket> xingya-ecs`，在本机连 `127.0.0.1:5433`。
 
 ### 6.4 数据保留与删除
 | 数据 | 保留 |
@@ -139,7 +139,10 @@
 
 ## 附录 A 数据库验证结果
 
-- 环境：本机临时 MySQL 8.4.6（官方 minimal 二进制，独立数据目录与 socket，仅绑定 127.0.0.1），验证脚本 `db/verify/verify.mjs`（Node + mysql2，root 经 socket 连接），完成后删除库、账号并停止实例。
+> **2026-10-30**：数据库引擎改为 PostgreSQL 16 后，附录 A 中 MySQL 验证数字为历史记录；请以 `db/verify/result.txt` 的 PostgreSQL 验证为准（重新验证进行中/已完成见该文件）。
+
+
+- 环境：本机临时 PostgreSQL 16（官方 minimal 二进制，独立数据目录与 socket，仅绑定 127.0.0.1），验证脚本 `db/verify/verify.mjs`（Node + pg，root 经 socket 连接），完成后删除库、账号并停止实例。
 - 2026-10-21 按设计变更修订后重新验证：**155 项全部通过**（完整输出见 `db/verify/result.txt`）；原有 73 项按新表名与新结构改写后全部保留（`star_ledger` → `ledger`、闯关改为 `play_id` 唯一、复习条目绑定义项、商店不含伙伴等），并新增下列检查。
 - 结构（第 7–9 部分时）：从空库应用两次，结构指纹（列、约束、CHECK、索引、外键、表级与列级授权）完全一致；表 55、外键 108、CHECK 133、非主键唯一键 54、生成列 12；指纹 `ab12eef1c3b3`。
 - 碎片账本只追加：应用账号对碎片流水 UPDATE/DELETE 被拒；碎片不能用于购买、不能由家长奖励（币种与类型 CHECK）；每个呀哈哈家族成员 1 片、复习完成 2 片（范围 CHECK）；碎片余额不可为负；同一 `source_key` 在同一币种只入账一次，不同币种各一次；“学习星”只统计星星的 level_pass/review_day/streak。

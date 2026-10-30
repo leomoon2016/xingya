@@ -88,7 +88,7 @@ sequenceDiagram
   participant API as 服务
   participant D as discovery
   participant S as stars
-  participant DB as MySQL
+  participant DB as PostgreSQL
   K->>API: POST /discovery/spots/:id/reveal（请求 ID R）
   API->>DB: BEGIN；INSERT idempotency(R)
   API->>D: reveal

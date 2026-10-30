@@ -17,7 +17,7 @@
 - [ ] 健康检查失败时自动切回上一个发布并重启；有在一次性环境中的测试（故意部署一个健康检查失败的包）证明回滚生效。
 - [ ] `rollback.sh` 可手动把 `current` 切回上一个发布并重启；只回代码不回库。
 - [ ] 服务器上只保留最近 3 个发布目录。
-- [ ] 部署前在临时 MySQL 上再跑一次 `db/verify` 并通过。
+- [ ] 部署前在临时 PostgreSQL 上再跑一次 `db/verify` 并通过。
 - [ ] 首次部署后：`/api/v1/health` 返回本次版本；经 SSH 端口转发在本机打开孩子端可看到健康结果，打开后台外壳可加载页面。
 - [ ] CI `deploy` 阶段已写入工作流：只在 main 触发、受 GitHub Environment 保护、使用专用部署密钥与固定 known_hosts；密钥只以 Environment 机密名引用。
 - [ ] 部署脚本与发布包中不含任何密钥；服务从 `/etc/xingya/secrets.env` 读取配置。

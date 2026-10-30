@@ -1,134 +1,150 @@
 -- =====================================================================
--- db/roles.sql —— 数据库角色、账号与授权（root 执行，可重复执行）
--- 【草案，设计文档评审通过前可能调整】
--- 顺序：表级授权要求表已存在，因此 root 在“应用迁移之后”执行本文件；
---       以后新增表时，在这里补充对应授权并再次执行（幂等）。
+-- db/roles.sql —— PostgreSQL 角色与授权（超级用户执行，可重复执行）
+-- 【草案】2026-10-30：由 MySQL 账号模型改写为 PostgreSQL 角色（ADR 0023）
+-- 顺序：表级授权要求表已存在，因此在“应用迁移之后”执行；新增表时补充授权并再执行（幂等）。
+-- 连接：只允许本机 Unix socket / 127.0.0.1（见 deploy 中 pg_hba.conf）；无远程角色。
+-- 口令：角色先 NOLOGIN 或无密码；部署引导从 /etc/xingya/secrets.env 设置密码并允许 LOGIN。
 -- =====================================================================
 
-SET NAMES utf8mb4;
+SET client_encoding = 'UTF8';
 
--- ---------------------------------------------------------------------
--- 13. 数据库角色与账号（root；可重复执行）
---   * 只建 @'localhost' 账号：应用与 SSH 隧道都经 Unix socket 连接（隧道用 ssh -L 端口:/run/mysqld/mysqld.sock）；
---   * 服务器 my.cnf：bind-address=127.0.0.1、mysqlx=OFF、skip-name-resolve；不存在任何远程账号；
---   * 账号创建时 ACCOUNT LOCK 且无口令；部署引导脚本从 /etc/xingya/secrets.env 读取口令执行
---     ALTER USER ... IDENTIFIED BY ... ACCOUNT UNLOCK（口令不进仓库）。
--- ---------------------------------------------------------------------
-CREATE ROLE IF NOT EXISTS 'xingya_app_role', 'xingya_migrator_role';
+-- 应用与迁移角色（无继承超级用户）
+DO $$ BEGIN
+  CREATE ROLE xingya_app_role NOLOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE ROLE xingya_migrator_role NOLOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE ROLE xingya_app LOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE ROLE xingya_migrator LOGIN;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- migrator：库内全部权限（DDL、示例课程导入、运维脚本），无 GRANT OPTION
-GRANT ALL PRIVILEGES ON xingya.* TO 'xingya_migrator_role';
+-- 登录角色挂到权限角色
+GRANT xingya_app_role TO xingya_app;
+GRANT xingya_migrator_role TO xingya_migrator;
 
--- app：按表最小授权
--- (a) 只读
-GRANT SELECT ON xingya.schema_migrations TO 'xingya_app_role';
--- (b) 只追加：SELECT, INSERT（没有 UPDATE/DELETE）
---     账本（星星与碎片）、闯关与复习记录、赠送、审计、图鉴，
---     以及已发布课程版本：发布 = 插入新行，已发布的行永远不能被应用修改或删除
-GRANT SELECT, INSERT ON xingya.ledger           TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.attempts         TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.review_sessions  TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.gifts            TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.audit_events     TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.yahaha_finds     TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.word_random_draws TO 'xingya_app_role';  -- 单词本随机判定记录
-GRANT SELECT, INSERT ON xingya.course_versions  TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.units            TO 'xingya_app_role';   -- 单元随课程版本只追加
-GRANT SELECT, INSERT ON xingya.levels           TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.questions        TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.question_answers TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.learning_cards   TO 'xingya_app_role';   -- 学习卡随课程版本只追加
-GRANT SELECT, INSERT ON xingya.reward_ledger    TO 'xingya_app_role';   -- 累计奖励流水
-GRANT SELECT, INSERT ON xingya.hidden_reward_claims TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.pet_gifts        TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.pet_interactions TO 'xingya_app_role';
--- (c) 列级更新：只允许改指定列
-GRANT SELECT, INSERT ON xingya.words        TO 'xingya_app_role';
-GRANT UPDATE (phonetic, audio_asset_id, status) ON xingya.words TO 'xingya_app_role';           -- 拼写 text 不可改
-GRANT SELECT, INSERT ON xingya.word_senses  TO 'xingya_app_role';
-GRANT UPDATE (image_asset_id, status) ON xingya.word_senses TO 'xingya_app_role';               -- 释义不可改：勘误 = 退役 + 新义项
-GRANT SELECT, INSERT ON xingya.hiding_spots TO 'xingya_app_role';
-GRANT UPDATE (revealed_at) ON xingya.hiding_spots TO 'xingya_app_role';                          -- 通关时决定的内容不可改
-GRANT SELECT, INSERT ON xingya.assets       TO 'xingya_app_role';
-GRANT UPDATE (visibility, status) ON xingya.assets TO 'xingya_app_role';
--- (d) 可改不可删
-GRANT SELECT, INSERT, UPDATE ON xingya.families           TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.parents            TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.children           TO 'xingya_app_role';
-GRANT SELECT ON xingya.admin_accounts TO 'xingya_app_role';
-GRANT UPDATE (password_hash, failed_login_count, locked_until, password_changed_at) ON xingya.admin_accounts TO 'xingya_app_role';
-  -- 后台可改密码与登录锁定；TOTP 种子、用户名、状态只由运维命令（migrator：xingya admin:create / admin:reset-totp）修改
-GRANT SELECT, INSERT, UPDATE ON xingya.family_devices     TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.courses            TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.course_drafts      TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.plays              TO 'xingya_app_role';   -- 作答不过期（旧系统），无 DELETE
-GRANT SELECT, INSERT, UPDATE ON xingya.level_progress     TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.unit_progress      TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.review_items       TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.word_identities    TO 'xingya_app_role';   -- 词身份不可删：删除词条后学习状态与奖励进度保留
-GRANT SELECT, INSERT, UPDATE ON xingya.word_book_progress TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.word_tasks         TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.balances           TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.shop_items         TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.child_items        TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.reward_options     TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.redemptions        TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.reward_balances    TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.pet_tiers          TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.pet_tier_stages    TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.pet_species        TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.pet_dens           TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.child_pets         TO 'xingya_app_role';   -- 无 DELETE：退订与赠出只改状态
-GRANT SELECT, INSERT ON xingya.secret_routes TO 'xingya_app_role';
-GRANT UPDATE (entry_ledger_id, entered_at, passed_at, reward_ledger_id) ON xingya.secret_routes TO 'xingya_app_role';  -- 发现记录不可改
-GRANT SELECT, INSERT, UPDATE ON xingya.yahaha_sets        TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.yahaha_styles      TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.drop_rules         TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.ai_jobs            TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.ai_budget_months   TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.ai_providers       TO 'xingya_app_role';   -- 停用而不删除；密钥列只写入密文
-GRANT SELECT, INSERT, UPDATE ON xingya.material_upload_links TO 'xingya_app_role'; -- 撤销而不删除
-GRANT SELECT, INSERT, UPDATE ON xingya.materials          TO 'xingya_app_role';   -- 软删除可恢复（旧系统），无 DELETE
-GRANT SELECT, INSERT, UPDATE ON xingya.family_friendships TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.messages           TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.notifications TO 'xingya_app_role';
-GRANT UPDATE (read_at) ON xingya.notifications TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.abuse_reports      TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.child_controls     TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.usage_days         TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.daily_reports      TO 'xingya_app_role';
-GRANT SELECT, UPDATE         ON xingya.system_settings    TO 'xingya_app_role';
--- (f) Skill 与 AI 角色（studio 2b 节）：版本内容只能插入；已有版本只能改状态与审核字段
-GRANT SELECT, INSERT ON xingya.skills               TO 'xingya_app_role';
-GRANT UPDATE (status, current_version_id, version) ON xingya.skills TO 'xingya_app_role';            -- skill_key、audience 不可改
-GRANT SELECT, INSERT ON xingya.skill_versions       TO 'xingya_app_role';
+-- 库与 schema
+GRANT CONNECT ON DATABASE xingya TO xingya_app_role, xingya_migrator_role;
+GRANT USAGE ON SCHEMA public TO xingya_app_role, xingya_migrator_role;
+GRANT CREATE ON SCHEMA public TO xingya_migrator_role;
+-- 表所有者默认为执行迁移的超级用户；为便于 migrator 后续 DDL，迁移后可将 public 表改属 migrator（部署脚本可选）：
+-- ALTER TABLE ... OWNER TO xingya_migrator;  或在超级用户会话 SET ROLE 后应用迁移。
+
+
+-- migrator：DDL + 数据（无 CREATEROLE / 无把权限再授予他人）
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO xingya_migrator_role;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO xingya_migrator_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO xingya_migrator_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO xingya_migrator_role;
+
+-- 序列：应用需要 nextval（IDENTITY）
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO xingya_app_role;
+
+GRANT SELECT ON public.schema_migrations TO xingya_app_role;
+GRANT SELECT, INSERT ON public.ledger           TO xingya_app_role;
+GRANT SELECT, INSERT ON public.attempts         TO xingya_app_role;
+GRANT SELECT, INSERT ON public.review_sessions  TO xingya_app_role;
+GRANT SELECT, INSERT ON public.gifts            TO xingya_app_role;
+GRANT SELECT, INSERT ON public.audit_events     TO xingya_app_role;
+GRANT SELECT, INSERT ON public.yahaha_finds     TO xingya_app_role;
+GRANT SELECT, INSERT ON public.word_random_draws TO xingya_app_role;  -- 单词本随机判定记录
+GRANT SELECT, INSERT ON public.course_versions  TO xingya_app_role;
+GRANT SELECT, INSERT ON public.units            TO xingya_app_role;   -- 单元随课程版本只追加
+GRANT SELECT, INSERT ON public.levels           TO xingya_app_role;
+GRANT SELECT, INSERT ON public.questions        TO xingya_app_role;
+GRANT SELECT, INSERT ON public.question_answers TO xingya_app_role;
+GRANT SELECT, INSERT ON public.learning_cards   TO xingya_app_role;   -- 学习卡随课程版本只追加
+GRANT SELECT, INSERT ON public.reward_ledger    TO xingya_app_role;   -- 累计奖励流水
+GRANT SELECT, INSERT ON public.hidden_reward_claims TO xingya_app_role;
+GRANT SELECT, INSERT ON public.pet_gifts        TO xingya_app_role;
+GRANT SELECT, INSERT ON public.pet_interactions TO xingya_app_role;
+GRANT SELECT, INSERT ON public.words        TO xingya_app_role;
+GRANT UPDATE (phonetic, audio_asset_id, status) ON public.words TO xingya_app_role;           -- 拼写 text 不可改
+GRANT SELECT, INSERT ON public.word_senses  TO xingya_app_role;
+GRANT UPDATE (image_asset_id, status) ON public.word_senses TO xingya_app_role;               -- 释义不可改：勘误 = 退役 + 新义项
+GRANT SELECT, INSERT ON public.hiding_spots TO xingya_app_role;
+GRANT UPDATE (revealed_at) ON public.hiding_spots TO xingya_app_role;                          -- 通关时决定的内容不可改
+GRANT SELECT, INSERT ON public.assets       TO xingya_app_role;
+GRANT UPDATE (visibility, status) ON public.assets TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.families           TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.parents            TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.children           TO xingya_app_role;
+GRANT SELECT ON public.admin_accounts TO xingya_app_role;
+GRANT UPDATE (password_hash, failed_login_count, locked_until, password_changed_at) ON public.admin_accounts TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.family_devices     TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.courses            TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.course_drafts      TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.plays              TO xingya_app_role;   -- 作答不过期（旧系统），无 DELETE
+GRANT SELECT, INSERT, UPDATE ON public.level_progress     TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.unit_progress      TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.review_items       TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.word_identities    TO xingya_app_role;   -- 词身份不可删：删除词条后学习状态与奖励进度保留
+GRANT SELECT, INSERT, UPDATE ON public.word_book_progress TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.word_tasks         TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.balances           TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.shop_items         TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.child_items        TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.reward_options     TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.redemptions        TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.reward_balances    TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.pet_tiers          TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.pet_tier_stages    TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.pet_species        TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.pet_dens           TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.child_pets         TO xingya_app_role;   -- 无 DELETE：退订与赠出只改状态
+GRANT SELECT, INSERT ON public.secret_routes TO xingya_app_role;
+GRANT UPDATE (entry_ledger_id, entered_at, passed_at, reward_ledger_id) ON public.secret_routes TO xingya_app_role;  -- 发现记录不可改
+GRANT SELECT, INSERT, UPDATE ON public.yahaha_sets        TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.yahaha_styles      TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.drop_rules         TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.ai_jobs            TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.ai_budget_months   TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.ai_providers       TO xingya_app_role;   -- 停用而不删除；密钥列只写入密文
+GRANT SELECT, INSERT, UPDATE ON public.material_upload_links TO xingya_app_role; -- 撤销而不删除
+GRANT SELECT, INSERT, UPDATE ON public.materials          TO xingya_app_role;   -- 软删除可恢复（旧系统），无 DELETE
+GRANT SELECT, INSERT, UPDATE ON public.family_friendships TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.messages           TO xingya_app_role;
+GRANT SELECT, INSERT ON public.notifications TO xingya_app_role;
+GRANT UPDATE (read_at) ON public.notifications TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.abuse_reports      TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.child_controls     TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.usage_days         TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.daily_reports      TO xingya_app_role;
+GRANT SELECT, UPDATE         ON public.system_settings    TO xingya_app_role;
+GRANT SELECT, INSERT ON public.skills               TO xingya_app_role;
+GRANT UPDATE (status, current_version_id, version) ON public.skills TO xingya_app_role;            -- skill_key、audience 不可改
+GRANT SELECT, INSERT ON public.skill_versions       TO xingya_app_role;
 GRANT UPDATE (status, reviewed_by_admin_id, reviewed_at, safety_reviewed_by_admin_id, safety_reviewed_at, published_at)
-  ON xingya.skill_versions TO 'xingya_app_role';                                                        -- 提示词、模式、工具白名单不可改
-GRANT SELECT, INSERT ON xingya.skill_allowed_agents TO 'xingya_app_role';
-GRANT UPDATE (revoked_at, revoked_by_admin_id) ON xingya.skill_allowed_agents TO 'xingya_app_role';  -- 撤销而不删除
-GRANT SELECT, INSERT ON xingya.agents               TO 'xingya_app_role';
-GRANT UPDATE (status, current_version_id, version) ON xingya.agents TO 'xingya_app_role';            -- agent_key、audience 不可改
-GRANT SELECT, INSERT ON xingya.agent_versions       TO 'xingya_app_role';
+  ON public.skill_versions TO xingya_app_role;                                                        -- 提示词、模式、工具白名单不可改
+GRANT SELECT, INSERT ON public.skill_allowed_agents TO xingya_app_role;
+GRANT UPDATE (revoked_at, revoked_by_admin_id) ON public.skill_allowed_agents TO xingya_app_role;  -- 撤销而不删除
+GRANT SELECT, INSERT ON public.agents               TO xingya_app_role;
+GRANT UPDATE (status, current_version_id, version) ON public.agents TO xingya_app_role;            -- agent_key、audience 不可改
+GRANT SELECT, INSERT ON public.agent_versions       TO xingya_app_role;
 GRANT UPDATE (status, reviewed_by_admin_id, reviewed_at, safety_reviewed_by_admin_id, safety_reviewed_at, published_at)
-  ON xingya.agent_versions TO 'xingya_app_role';
-GRANT SELECT, INSERT ON xingya.agent_skills         TO 'xingya_app_role';                              -- 随角色版本不可改
-GRANT SELECT, INSERT, UPDATE ON xingya.agent_budget_months TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE ON xingya.quick_tasks         TO 'xingya_app_role';                       -- 归档而不删除
-GRANT SELECT, INSERT, UPDATE ON xingya.agent_runs          TO 'xingya_app_role';
-GRANT SELECT, INSERT, DELETE ON xingya.agent_run_steps     TO 'xingya_app_role';                       -- 不可改；180 天保留期后删除
+  ON public.agent_versions TO xingya_app_role;
+GRANT SELECT, INSERT ON public.agent_skills         TO xingya_app_role;                              -- 随角色版本不可改
+GRANT SELECT, INSERT, UPDATE ON public.agent_budget_months TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE ON public.quick_tasks         TO xingya_app_role;                       -- 归档而不删除
+GRANT SELECT, INSERT, UPDATE ON public.agent_runs          TO xingya_app_role;
+GRANT SELECT, INSERT, DELETE ON public.agent_run_steps     TO xingya_app_role;                       -- 不可改；180 天保留期后删除
 -- (e) 可删（会话、令牌、过期数据清理、取消覆盖/屏蔽、单词本词条）
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.sessions             TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.auth_tokens          TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.idempotency_requests TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.ai_chat_usage        TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.email_outbox         TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.course_overrides     TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.blocks               TO 'xingya_app_role';
-GRANT SELECT, INSERT, UPDATE, DELETE ON xingya.word_entries         TO 'xingya_app_role';   -- 单词本词条可删除（词身份保留）
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sessions             TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.auth_tokens          TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.idempotency_requests TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ai_chat_usage        TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.email_outbox         TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.course_overrides     TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.blocks               TO xingya_app_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.word_entries         TO xingya_app_role;   -- 单词本词条可删除（词身份保留）
 
-CREATE USER IF NOT EXISTS 'xingya_app'@'localhost'      ACCOUNT LOCK;
-CREATE USER IF NOT EXISTS 'xingya_migrator'@'localhost' ACCOUNT LOCK;
-GRANT 'xingya_app_role'      TO 'xingya_app'@'localhost';
-GRANT 'xingya_migrator_role' TO 'xingya_migrator'@'localhost';
-SET DEFAULT ROLE 'xingya_app_role'      TO 'xingya_app'@'localhost';
-SET DEFAULT ROLE 'xingya_migrator_role' TO 'xingya_migrator'@'localhost';
+
+-- 注释：登录限制由 pg_hba.conf 保证（local/host 127.0.0.1 only；reject 其他）。
+-- 部署时：ALTER ROLE xingya_app WITH PASSWORD '...'; ALTER ROLE xingya_migrator WITH PASSWORD '...';

@@ -64,7 +64,7 @@ sequenceDiagram
   participant P as 家长端
   participant API as 服务
   participant S as stars
-  participant DB as MySQL
+  participant DB as PostgreSQL
   K->>API: POST /redemptions {rewardOptionId, portions, expectedPrice}（请求 ID R1）
   API->>DB: BEGIN；INSERT idempotency(R1)
   API->>S: requestRedemption

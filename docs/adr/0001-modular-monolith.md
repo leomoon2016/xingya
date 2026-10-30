@@ -8,7 +8,7 @@
 单人开发、单台 2 GB 服务器、首发一个家庭；旧系统的同步桥接与串行 worker 带来全局故障。
 
 ## 决策
-一个 TypeScript 服务（Node 24 + Fastify 5 + Kysely + Zod + mysql2），分为八个模块（family、content、learning、stars、social、chat、controls、reports；2026-10-21 设计变更后增加 companion、discovery、studio，共十一个，见[方案总览](../02-solution/overview.md)），各自拥有自己的表，只通过 `index.ts` 暴露函数；跨模块写入在同一事务内完成；边界由 CI 检查。
+一个 TypeScript 服务（Node 24 + Fastify 5 + Kysely + Zod + pg），分为八个模块（family、content、learning、stars、social、chat、controls、reports；2026-10-21 设计变更后增加 companion、discovery、studio，共十一个，见[方案总览](../02-solution/overview.md)），各自拥有自己的表，只通过 `index.ts` 暴露函数；跨模块写入在同一事务内完成；边界由 CI 检查。
 
 仓库应用划分（2026-10-21 目录调整，[ADR 0015](0015-admin-app-and-seeds.md)）：服务端仍是一个应用 `apps/api`（平台层 `src/platform/{db,auth,logging,config}`，模块在 `src/modules/`）；前端为两个应用——`apps/web`（孩子端与家长中心）与 `apps/admin`（系统管理端，独立子域名）；共享代码在 `packages/{contracts,rules,ui,seed-schema,skill-format}`；内置数据在 `seeds/`。
 

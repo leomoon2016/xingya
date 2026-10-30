@@ -69,7 +69,7 @@ sequenceDiagram
   participant W as 任务执行器
   participant P as Piper（一次性进程）
   participant OSS as OSS
-  participant DB as MySQL
+  participant DB as PostgreSQL
   A->>CO: publish(draftId, version)
   CO->>DB: BEGIN；草稿 FOR UPDATE；状态 in_review 且 check_passed=1
   CO->>ST: enqueueInTx(publish_audio, owner=course_draft:{id}, 预估 0)
